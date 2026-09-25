@@ -35,7 +35,7 @@ Abra `http://localhost:8000`.
 2. En Railway cree un proyecto desde el repositorio y agregue un servicio **PostgreSQL**.
 3. Configure las variables del servicio web:
 
-   - `DATABASE_URL=${{Postgres.DATABASE_URL}}` (Railway entrega `postgresql://`; SQLAlchemy/psycopg lo acepta; si su entorno lo exige, use `postgresql+psycopg://`).
+   - `DATABASE_URL=${{Postgres.DATABASE_URL}}` (la aplicación normaliza automáticamente la URL de Railway para usar psycopg 3).
    - `SECRET_KEY`: cadena aleatoria de 32 bytes o más.
    - `ADMIN_EMAIL`: cuenta institucional.
    - `ADMIN_PASSWORD`: contraseña larga y única.
