@@ -136,10 +136,17 @@ def test_shadow_correction_balances_uneven_illumination():
 
 
 def test_front_detail_region_can_recover_section(monkeypatch):
-    readings = iter(["", "", "SECCIÓN 4094"])
+    readings = iter(["", ""])
     monkeypatch.setattr(
         "app.ocr.pytesseract.image_to_string",
         lambda *_args, **_kwargs: next(readings),
+    )
+    monkeypatch.setattr(
+        "app.ocr.pytesseract.image_to_data",
+        lambda *_args, **_kwargs: {
+            "text": ["SECCIÓN", "4094"],
+            "top": [1500, 1540], "height": [30, 36], "left": [100, 220],
+        },
     )
     image = Image.new("RGB", (1600, 1000), "white")
     stream = BytesIO()
@@ -176,7 +183,7 @@ def test_front_regions_recover_noisy_small_fields():
         "2O26-2O36",
     )
 
-    assert data["address"] == "VIAL TLALPAN 100 COL ARENAL TEPEPAN 14610 TLALPAN CDMX"
+    assert data["address"] == "VIAL TLALPAN 100\nCOL ARENAL TEPEPAN 14610\nTLALPAN CDMX"
     assert data["curp"] == "GOVM800705MCLMLR01"
     assert data["birth_date"] == "05/07/1980"
     assert data["section"] == "4094"

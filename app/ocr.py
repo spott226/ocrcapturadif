@@ -103,7 +103,7 @@ def parse_ine_text(text: str) -> dict[str, str]:
                 if section_label.search(candidate):
                     break
                 address_lines.append(candidate)
-            result.address = " ".join(address_lines)[:500]
+            result.address = "\n".join(address_lines)[:500]
 
     # En las INE nuevas, el reverso concentra CIC/OCR y el nombre en tres
     # renglones legibles por máquina, sin imprimir las etiquetas "CIC" u "OCR".
@@ -178,31 +178,123 @@ def parse_front_regions(
             continue
         if len(re.findall(r"[A-ZÁÉÍÓÚÑ]", line)) >= 3:
             address_lines.append(line)
-    result["address"] = " ".join(address_lines)[:500]
+    result["address"] = "\n".join(address_lines)[:500]
     result["curp"] = _curp_from_region(curp_text)
 
-    birth_digits = re.sub(r"[^0-9/.-]", "", birth_text.upper().translate(OCR_DIGITS))
+    birth_payload = re.sub(r"^.*(?:FECHA DE NACIMIENTO|NACIMIENTO)", "", birth_text.upper(), flags=re.DOTALL)
+    birth_digits = re.sub(r"[^0-9/.-]", "", birth_payload.translate(OCR_DIGITS))
     birth = re.search(r"(\d{2})[/.-]?(\d{2})[/.-]?(19\d{2}|20\d{2})", birth_digits)
     if birth:
         result["birth_date"] = "/".join(birth.groups())
 
-    section_digits = re.sub(r"\D", "", section_text.upper().translate(OCR_DIGITS))
+    section_payload = re.sub(r"^.*SECCI[ÓO]N", "", section_text.upper(), flags=re.DOTALL)
+    section_digits = re.sub(r"\D", "", section_payload.translate(OCR_DIGITS))
     section = re.search(r"\d{3,5}", section_digits)
     if section:
         result["section"] = section.group(0)
 
-    registration_digits = re.sub(r"\D", "", registration_text.upper().translate(OCR_DIGITS))
+    registration_payload = re.sub(r"^.*A[ÑN]O DE REGISTRO", "", registration_text.upper(), flags=re.DOTALL)
+    registration_digits = re.sub(r"\D", "", registration_payload.translate(OCR_DIGITS))
     registration = re.search(r"(19\d{2}|20\d{2})(\d{2})?", registration_digits)
     if registration:
         result["registration_year"] = "".join(part for part in registration.groups() if part)
 
-    valid_digits = re.sub(r"[^0-9-]", "", valid_text.upper().translate(OCR_DIGITS))
+    valid_payload = re.sub(r"^.*VIGENCIA", "", valid_text.upper(), flags=re.DOTALL)
+    valid_digits = re.sub(r"[^0-9-]", "", valid_payload.translate(OCR_DIGITS))
     valid = re.search(r"(20\d{2})-?(20\d{2})", valid_digits)
     if valid:
         result["valid_until"] = f"{valid.group(1)}-{valid.group(2)}"
     elif re.search(r"20\d{2}", valid_digits):
         result["valid_until"] = re.search(r"20\d{2}", valid_digits).group(0)
     return result
+
+
+FRONT_FIELD_BOXES = {
+    "address": (.30, .46, .76, .72),
+    "curp": (.30, .71, .75, .84),
+    "birth_date": (.30, .80, .57, .97),
+    "section": (.52, .80, .70, .97),
+    "registration_year": (.64, .67, .92, .86),
+    "valid_until": (.64, .80, .93, .98),
+    "sex_or_gender": (.79, .17, .99, .36),
+}
+
+
+def _front_field_montage(image: Image.Image) -> tuple[Image.Image, dict[str, tuple[int, int]]]:
+    width, height = image.size
+    montage_width = 1400
+    prepared = []
+    for field, box in FRONT_FIELD_BOXES.items():
+        region = image.crop((
+            int(width * box[0]), int(height * box[1]),
+            int(width * box[2]), int(height * box[3]),
+        ))
+        factor = min(3.5, 1200 / max(1, region.width))
+        region = region.resize(
+            (int(region.width * factor), int(region.height * factor)),
+            Image.Resampling.LANCZOS,
+        )
+        prepared.append((field, region))
+    montage_height = sum(region.height for _, region in prepared) + 80 * (len(prepared) + 1)
+    montage = Image.new("L", (montage_width, montage_height), 255)
+    bounds = {}
+    y = 80
+    for field, region in prepared:
+        x = (montage_width - region.width) // 2
+        montage.paste(region, (x, y))
+        bounds[field] = (y, y + region.height)
+        y += region.height + 80
+    return montage, bounds
+
+
+def _front_fields_from_position(image: Image.Image) -> tuple[dict[str, str], str]:
+    montage, bounds = _front_field_montage(image)
+    try:
+        data = pytesseract.image_to_data(
+            montage,
+            lang="spa",
+            config="--oem 3 --psm 6",
+            timeout=18,
+            output_type=pytesseract.Output.DICT,
+        )
+    except (RuntimeError, pytesseract.TesseractError):
+        return asdict(Extracted()), ""
+    words = {field: [] for field in bounds}
+    raw_words = []
+    for index, text in enumerate(data.get("text", [])):
+        text = str(text).strip()
+        if not text:
+            continue
+        raw_words.append(text)
+        center = int(data["top"][index]) + int(data["height"][index]) // 2
+        left = int(data["left"][index])
+        for field, (top, bottom) in bounds.items():
+            if top <= center <= bottom:
+                words[field].append((int(data["top"][index]), left, text))
+                break
+    texts = {}
+    for field, items in words.items():
+        lines = []
+        for top, left, text in sorted(items):
+            if not lines or abs(top - lines[-1][0]) > 28:
+                lines.append([top, [(left, text)]])
+            else:
+                lines[-1][1].append((left, text))
+        texts[field] = "\n".join(
+            " ".join(text for _, text in sorted(line_words))
+            for _, line_words in lines
+        )
+    parsed = parse_front_regions(
+        texts["address"], texts["curp"], texts["birth_date"],
+        texts["section"], texts["registration_year"], texts["valid_until"],
+    )
+    gender_text = normalize(texts["sex_or_gender"])
+    gender = re.search(r"(?:SEXO|G[ÉE]NERO)\s*[:.]?\s*(NB|H|M)\b", gender_text)
+    if not gender:
+        gender = re.search(r"\b(NB|H|M)\b", gender_text)
+    if gender:
+        parsed["sex_or_gender"] = gender.group(1)
+    return parsed, " ".join(raw_words)
 
 
 def parse_front_document(text: str) -> dict[str, str]:
@@ -252,23 +344,6 @@ def _safe_ocr(image: Image.Image, config: str, timeout: int = 15) -> str:
         )
     except (RuntimeError, pytesseract.TesseractError):
         return ""
-
-
-def _front_zones_image(image: Image.Image) -> Image.Image:
-    width, height = image.size
-    address = image.crop((int(width * .27), int(height * .40), int(width * .80), int(height * .72)))
-    lower = image.crop((int(width * .27), int(height * .65), int(width * .96), int(height * .99)))
-    target_width = 1500
-    prepared = []
-    for region in (address, lower):
-        factor = target_width / region.width
-        prepared.append(region.resize((target_width, int(region.height * factor)), Image.Resampling.LANCZOS))
-    result = Image.new("L", (target_width, sum(region.height for region in prepared) + 50), 255)
-    y = 0
-    for region in prepared:
-        result.paste(region, (0, y))
-        y += region.height + 50
-    return result
 
 
 def prepare_ocr_images(image: Image.Image) -> tuple[Image.Image, Image.Image, Image.Image]:
@@ -327,9 +402,8 @@ def extract_image(data: bytes, side: str | None = None) -> tuple[dict[str, str],
                     merged[key] = value
 
         if side == "front":
-            region_text = _safe_ocr(_front_zones_image(clean), "--oem 3 --psm 6", timeout=15)
+            region_fields, region_text = _front_fields_from_position(clean)
             raw_parts.append(region_text)
-            region_fields = parse_front_document(region_text)
             for key, value in region_fields.items():
                 if value and not merged[key]:
                     merged[key] = value

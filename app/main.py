@@ -251,9 +251,9 @@ def export(request: Request, db: Session = Depends(get_db)):
     wb = Workbook()
     ws = wb.active
     ws.title = "Registros DIF"
-    ws.append(["ID", "Nombre", "Domicilio", "CURP", "Clave de elector", "Fecha de nacimiento", "Sexo/Género", "Entidad", "Municipio", "Sección", "Localidad", "Año de registro", "CIC", "OCR", "Vigencia", "Capturó", "Fecha de captura"])
+    ws.append(["ID", "Nombre", "Domicilio", "CURP", "Clave de elector", "Fecha de nacimiento", "Sexo/Género", "Sección", "Año de registro", "CIC", "OCR", "Vigencia", "Capturó", "Fecha de captura"])
     for row in rows:
-        ws.append([row.id, row.name, row.address, row.curp, row.voter_key, row.birth_date, row.sex_or_gender, row.state_code, row.municipality_code, row.section, row.locality_code, row.registration_year, row.cic, row.ocr_code, row.valid_until, row.created_by, row.created_at.replace(tzinfo=None)])
+        ws.append([row.id, row.name, row.address, row.curp, row.voter_key, row.birth_date, row.sex_or_gender, row.section, row.registration_year, row.cic, row.ocr_code, row.valid_until, row.created_by, row.created_at.replace(tzinfo=None)])
     ws.freeze_panes = "A2"
     for column in ws.columns:
         ws.column_dimensions[column[0].column_letter].width = min(max(len(str(c.value or "")) for c in column) + 2, 55)
