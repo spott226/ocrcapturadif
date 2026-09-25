@@ -38,6 +38,11 @@
       });
       video.srcObject = stream;
       await video.play();
+      const track = stream.getVideoTracks()[0];
+      const capabilities = track.getCapabilities?.() || {};
+      if (capabilities.focusMode?.includes("continuous")) {
+        track.applyConstraints({ advanced: [{ focusMode: "continuous" }] }).catch(() => {});
+      }
     } catch (_error) {
       closeCamera();
       target.click();
@@ -75,7 +80,7 @@
       target.files = transfer.files;
       showPreview(target.id, file);
       closeCamera();
-    }, "image/jpeg", 0.9);
+    }, "image/jpeg", 0.95);
   });
 
   cancel.addEventListener("click", closeCamera);

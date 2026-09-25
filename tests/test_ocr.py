@@ -1,4 +1,8 @@
-from app.ocr import parse_ine_text
+from io import BytesIO
+
+from PIL import Image
+
+from app.ocr import extract_image, parse_ine_text
 
 
 def test_parse_fictitious_ine_text():
@@ -45,3 +49,38 @@ def test_empty_text_does_not_invent_data():
         "registration_year": "", "issue_year": "", "cic": "",
         "ocr_code": "", "valid_until": "",
     }
+
+
+def test_common_ocr_label_confusions_are_tolerated():
+    data = parse_ine_text("""N0MBRE
+PERSONA FICTICIA
+D0M1C1L10
+CALLE DE PRUEBA 10
+SECC10N 4321
+V1GENC1A 2034""")
+    assert data["name"] == "PERSONA FICTICIA"
+    assert data["address"] == "CALLE DE PRUEBA 10"
+    assert data["section"] == "4321"
+    assert data["valid_until"] == "2034"
+
+
+def test_two_ocr_passes_merge_fictitious_results(monkeypatch):
+    readings = iter([
+        "NOMBRE\nPERSONA FICTICIA\nCURP PULA900101MDFRPN09",
+        "CLAVE DE ELECTOR PRLBAN90010109M100\nVIGENCIA 2036",
+    ])
+    monkeypatch.setattr(
+        "app.ocr.pytesseract.image_to_string",
+        lambda *_args, **_kwargs: next(readings),
+    )
+    image = Image.new("RGB", (900, 600), "white")
+    stream = BytesIO()
+    image.save(stream, format="JPEG")
+
+    data, raw = extract_image(stream.getvalue())
+
+    assert data["name"] == "PERSONA FICTICIA"
+    assert data["curp"] == "PULA900101MDFRPN09"
+    assert data["voter_key"] == "PRLBAN90010109M100"
+    assert data["valid_until"] == "2036"
+    assert "SEGUNDA LECTURA" in raw

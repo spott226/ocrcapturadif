@@ -171,6 +171,16 @@ async def ocr(request: Request, front: UploadFile = File(...), back: UploadFile 
         raise
     except Exception:
         return page(request, "review.html", data=merged, error="No se pudo leer la imagen. Capture los datos manualmente.")
+    if not any(merged.values()):
+        return page(
+            request,
+            "review.html",
+            data=merged,
+            error=(
+                "No se detectó texto de la INE. Vuelva a tomarla de cerca, "
+                "con buena luz, sin reflejos y con la credencial completa dentro del cuadro."
+            ),
+        )
     return page(request, "review.html", data=merged)
 
 

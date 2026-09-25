@@ -1,7 +1,7 @@
 import re
 from dataclasses import dataclass, asdict
 from io import BytesIO
-from PIL import Image, ImageEnhance, ImageOps
+from PIL import Image, ImageEnhance, ImageFilter, ImageOps, ImageStat
 import pytesseract
 
 
@@ -25,7 +25,18 @@ class Extracted:
 
 
 def normalize(text: str) -> str:
-    return "\n".join(" ".join(line.upper().split()) for line in text.splitlines() if line.strip())
+    normalized = "\n".join(" ".join(line.upper().split()) for line in text.splitlines() if line.strip())
+    # Corrige únicamente etiquetas conocidas que Tesseract suele confundir.
+    label_fixes = {
+        r"\bN[O0]M[B8]RE\b": "NOMBRE",
+        r"\bD[O0]M[I1Í]C[I1Í]L[I1Í][O0]\b": "DOMICILIO",
+        r"\bSECC[I1Í][O0Ó]N\b": "SECCIÓN",
+        r"\bV[I1Í]GENC[I1Í]A\b": "VIGENCIA",
+        r"\bEM[I1Í]S[I1Í][O0Ó]N\b": "EMISIÓN",
+    }
+    for pattern, replacement in label_fixes.items():
+        normalized = re.sub(pattern, replacement, normalized)
+    return normalized
 
 
 def parse_ine_text(text: str) -> dict[str, str]:
@@ -98,9 +109,41 @@ def parse_ine_text(text: str) -> dict[str, str]:
 def extract_image(data: bytes) -> tuple[dict[str, str], str]:
     with Image.open(BytesIO(data)) as image:
         image = ImageOps.exif_transpose(image).convert("L")
-        if image.width < 1400:
-            factor = 1400 / image.width
-            image = image.resize((1400, int(image.height * factor)))
-        image = ImageEnhance.Contrast(image).enhance(1.7)
-        text = pytesseract.image_to_string(image, lang="spa", config="--oem 3 --psm 6")
-    return parse_ine_text(text), text
+        longest_side = max(image.size)
+        if longest_side < 1800:
+            factor = 1800 / longest_side
+            image = image.resize(
+                (int(image.width * factor), int(image.height * factor)),
+                Image.Resampling.LANCZOS,
+            )
+        elif longest_side > 3200:
+            factor = 3200 / longest_side
+            image = image.resize(
+                (int(image.width * factor), int(image.height * factor)),
+                Image.Resampling.LANCZOS,
+            )
+
+        clean = ImageOps.autocontrast(image, cutoff=1)
+        clean = ImageEnhance.Contrast(clean).enhance(1.35)
+        clean = clean.filter(ImageFilter.UnsharpMask(radius=1.4, percent=175, threshold=3))
+        average = ImageStat.Stat(clean).mean[0]
+        threshold_level = max(135, min(205, int(average * 0.93)))
+        threshold = clean.point(lambda pixel: 255 if pixel > threshold_level else 0)
+
+        passes = (
+            (clean, "--oem 3 --psm 11"),
+            (threshold, "--oem 3 --psm 6"),
+        )
+        merged = asdict(Extracted())
+        raw_parts = []
+        for prepared, config in passes:
+            text = pytesseract.image_to_string(
+                prepared, lang="spa", config=config, timeout=25,
+            )
+            raw_parts.append(text)
+            fields = parse_ine_text(text)
+            for key, value in fields.items():
+                if value and not merged[key]:
+                    merged[key] = value
+
+    return merged, "\n--- SEGUNDA LECTURA ---\n".join(raw_parts)
