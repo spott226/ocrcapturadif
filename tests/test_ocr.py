@@ -144,10 +144,13 @@ def test_front_detail_region_can_recover_section(monkeypatch):
     monkeypatch.setattr(
         "app.ocr.pytesseract.image_to_data",
         lambda *_args, **_kwargs: {
-            "text": ["NOMBRE", "MONTOYA", "SALMON", "CHRISTOPHER", "LENIEL", "SECCIÓN", "4094"],
-            "top": [100, 150, 190, 230, 230, 2050, 2090],
-            "height": [30, 34, 34, 34, 34, 30, 36],
-            "left": [100, 100, 100, 100, 430, 100, 220],
+            "text": ["NOMBRE", "MONTOYA", "SALMON", "CHRISTOPHER", "LENIEL", "DOMICILIO", "CALLE", "UNO", "COLONIA", "CENTRO", "AGUASCALIENTES", "AGS", "SECCIÓN", "4094"],
+            "top": [100, 150, 190, 230, 230, 300, 340, 340, 380, 380, 420, 420, 500, 540],
+            "height": [30] * 14,
+            "left": [100, 100, 100, 100, 430, 100, 100, 250, 100, 280, 100, 390, 100, 220],
+            "block_num": [1] * 14,
+            "par_num": [1] * 14,
+            "line_num": [1, 2, 3, 4, 4, 5, 6, 6, 7, 7, 8, 8, 9, 10],
         },
     )
     image = Image.new("RGB", (1600, 1000), "white")
@@ -157,6 +160,7 @@ def test_front_detail_region_can_recover_section(monkeypatch):
     data, _raw = extract_image(stream.getvalue(), side="front")
 
     assert data["name"] == "MONTOYA SALMON CHRISTOPHER LENIEL"
+    assert data["address"] == "CALLE UNO\nCOLONIA CENTRO\nAGUASCALIENTES AGS"
     assert data["section"] == "4094"
 
 

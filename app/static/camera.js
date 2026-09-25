@@ -65,6 +65,30 @@
     status.textContent = "Fotografía lista";
   }
 
+  function photoQuality(sourceCanvas) {
+    const sample = document.createElement("canvas");
+    sample.width = 320;
+    sample.height = Math.round(320 / 1.586);
+    const context = sample.getContext("2d", { willReadFrequently: true });
+    context.drawImage(sourceCanvas, 0, 0, sample.width, sample.height);
+    const pixels = context.getImageData(0, 0, sample.width, sample.height).data;
+    let brightness = 0;
+    let edges = 0;
+    let comparisons = 0;
+    const gray = (offset) => pixels[offset] * .299 + pixels[offset + 1] * .587 + pixels[offset + 2] * .114;
+    for (let y = 1; y < sample.height; y += 2) {
+      for (let x = 1; x < sample.width; x += 2) {
+        const offset = (y * sample.width + x) * 4;
+        const value = gray(offset);
+        brightness += value;
+        edges += Math.abs(value - gray(offset - 4));
+        edges += Math.abs(value - gray(offset - sample.width * 4));
+        comparisons += 2;
+      }
+    }
+    return { brightness: brightness / (comparisons / 2), sharpness: edges / comparisons };
+  }
+
   document.querySelectorAll(".camera-open").forEach((button) => {
     button.addEventListener("click", () => openCamera(button.dataset.target));
   });
@@ -94,6 +118,19 @@
       video, sourceX, sourceY, sourceWidth, sourceHeight,
       0, 0, canvas.width, canvas.height,
     );
+    const quality = photoQuality(canvas);
+    if (quality.brightness < 55) {
+      message.textContent = "La foto está muy oscura. Mueva la INE hacia una luz uniforme y vuelva a tomarla.";
+      return;
+    }
+    if (quality.brightness > 235) {
+      message.textContent = "Hay demasiado reflejo. Incline ligeramente la INE y vuelva a tomarla.";
+      return;
+    }
+    if (quality.sharpness < 6) {
+      message.textContent = "La foto está borrosa. Acerque la INE, espere a que enfoque y vuelva a tomarla.";
+      return;
+    }
     canvas.toBlob((blob) => {
       if (!blob) return;
       const file = new File([blob], `${target.id}-ine.jpg`, { type: "image/jpeg" });

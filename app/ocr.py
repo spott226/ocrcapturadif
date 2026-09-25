@@ -31,8 +31,12 @@ def normalize(text: str) -> str:
     label_fixes = {
         r"\bN[O0]M[B8]RE\b": "NOMBRE",
         r"\bD[O0]M[I1Í]C[I1Í]L[I1Í][O0]\b": "DOMICILIO",
-        r"\bSECC[I1Í][O0Ó]N\b": "SECCIÓN",
-        r"\bV[I1Í]GENC[I1Í]A\b": "VIGENCIA",
+        r"\bCLAVE\s*DE\s*ELECT[O0]R\b": "CLAVE DE ELECTOR",
+        r"\bSECC[I1ÍL][O0Ó]N\b": "SECCIÓN",
+        r"\bV[I1Í]GENC[I1ÍL]A\b": "VIGENCIA",
+        r"\bA[ÑN]O\s*DE\s*REG[I1ÍL]STRO\b": "AÑO DE REGISTRO",
+        r"\bFECHA\s*DE\s*NAC[I1ÍL]M[I1ÍL]ENTO\b": "FECHA DE NACIMIENTO",
+        r"\bG[ÉE]NER[O0]\b": "GÉNERO",
         r"\bEM[I1Í]S[I1Í][O0Ó]N\b": "EMISIÓN",
     }
     for pattern, replacement in label_fixes.items():
@@ -46,7 +50,15 @@ def parse_ine_text(text: str) -> dict[str, str]:
     joined = " ".join(lines)
     result = Extracted()
     curp = re.search(r"\b[A-Z]{4}\d{6}[HM][A-Z]{5}[A-Z0-9]\d\b", joined)
-    voter = re.search(r"(?:CLAVE DE ELECTOR|ELECTOR)\s*[:.]?\s*([A-Z0-9]{16,20})", joined)
+    voter_value = ""
+    for line in lines:
+        voter_line = re.search(r"(?:CLAVE DE ELECTOR|ELECTOR)\s*[:.]?\s*([A-Z0-9 ]+)$", line)
+        if not voter_line:
+            continue
+        candidate = re.sub(r"\s", "", voter_line.group(1))
+        if 16 <= len(candidate) <= 20:
+            voter_value = candidate
+            break
     valid = re.search(r"(?:VIGENCIA|VÁLIDA? HASTA)\s*[:.]?\s*(\d{4}(?:\s*[-/]\s*\d{4})?|\d{2}[/.-]\d{2}[/.-]\d{4})", joined)
     birth = re.search(r"(?:FECHA DE NACIMIENTO|NACIMIENTO)\s*[:.]?\s*(\d{2}[/.-]\d{2}[/.-]\d{4})", joined)
     sex = re.search(r"(?:SEXO|G[ÉE]NERO)\s*[:.]?\s*(NB|H|M)\b", joined)
@@ -60,8 +72,8 @@ def parse_ine_text(text: str) -> dict[str, str]:
     ocr_code = re.search(r"\bOCR\s*[:.]?\s*(\d{12,13})\b", joined)
     if curp:
         result.curp = curp.group(0)
-    if voter:
-        result.voter_key = voter.group(1)
+    if voter_value:
+        result.voter_key = voter_value
     if valid:
         result.valid_until = valid.group(1).replace(" ", "")
     if birth:
@@ -209,100 +221,37 @@ def parse_front_regions(
     return result
 
 
-FRONT_FIELD_BOXES = {
-    "name": (.29, .20, .77, .47),
-    "address": (.30, .46, .76, .72),
-    "curp": (.30, .71, .75, .84),
-    "birth_date": (.30, .80, .57, .97),
-    "section": (.52, .80, .70, .97),
-    "registration_year": (.64, .67, .92, .86),
-    "valid_until": (.64, .80, .93, .98),
-    "sex_or_gender": (.79, .17, .99, .36),
-}
-
-
-def _front_field_montage(image: Image.Image) -> tuple[Image.Image, dict[str, tuple[int, int]]]:
-    width, height = image.size
-    montage_width = 1400
-    prepared = []
-    for field, box in FRONT_FIELD_BOXES.items():
-        region = image.crop((
-            int(width * box[0]), int(height * box[1]),
-            int(width * box[2]), int(height * box[3]),
-        ))
-        factor = min(3.5, 1200 / max(1, region.width))
-        region = region.resize(
-            (int(region.width * factor), int(region.height * factor)),
-            Image.Resampling.LANCZOS,
-        )
-        prepared.append((field, region))
-    montage_height = sum(region.height for _, region in prepared) + 80 * (len(prepared) + 1)
-    montage = Image.new("L", (montage_width, montage_height), 255)
-    bounds = {}
-    y = 80
-    for field, region in prepared:
-        x = (montage_width - region.width) // 2
-        montage.paste(region, (x, y))
-        bounds[field] = (y, y + region.height)
-        y += region.height + 80
-    return montage, bounds
-
-
-def _front_fields_from_position(image: Image.Image) -> tuple[dict[str, str], str]:
-    montage, bounds = _front_field_montage(image)
+def _front_fields_from_layout(image: Image.Image) -> tuple[dict[str, str], str]:
     try:
         data = pytesseract.image_to_data(
-            montage,
+            image,
             lang="spa",
-            config="--oem 3 --psm 6",
+            config="--oem 3 --psm 11",
             timeout=18,
             output_type=pytesseract.Output.DICT,
         )
     except (RuntimeError, pytesseract.TesseractError):
         return asdict(Extracted()), ""
-    words = {field: [] for field in bounds}
-    raw_words = []
+    lines = {}
     for index, text in enumerate(data.get("text", [])):
         text = str(text).strip()
         if not text:
             continue
-        raw_words.append(text)
-        center = int(data["top"][index]) + int(data["height"][index]) // 2
-        left = int(data["left"][index])
-        for field, (top, bottom) in bounds.items():
-            if top <= center <= bottom:
-                words[field].append((int(data["top"][index]), left, text))
-                break
-    texts = {}
-    for field, items in words.items():
-        lines = []
-        for top, left, text in sorted(items):
-            if not lines or abs(top - lines[-1][0]) > 28:
-                lines.append([top, [(left, text)]])
-            else:
-                lines[-1][1].append((left, text))
-        texts[field] = "\n".join(
-            " ".join(text for _, text in sorted(line_words))
-            for _, line_words in lines
+        key = (
+            int(data.get("block_num", [0] * len(data["text"]))[index]),
+            int(data.get("par_num", [0] * len(data["text"]))[index]),
+            int(data.get("line_num", [index] * len(data["text"]))[index]),
         )
-    parsed = parse_front_regions(
-        texts["address"], texts["curp"], texts["birth_date"],
-        texts["section"], texts["registration_year"], texts["valid_until"],
+        top = int(data["top"][index])
+        left = int(data["left"][index])
+        entry = lines.setdefault(key, {"top": top, "words": []})
+        entry["top"] = min(entry["top"], top)
+        entry["words"].append((left, text))
+    reconstructed = "\n".join(
+        " ".join(text for _, text in sorted(entry["words"]))
+        for entry in sorted(lines.values(), key=lambda item: item["top"])
     )
-    name_lines = []
-    for line in normalize(texts["name"]).splitlines():
-        line = re.sub(r"^N[O0]M[B8]RE\s*", "", line).strip(" :-")
-        if line and len(re.findall(r"[A-ZÁÉÍÓÚÑ]", line)) >= 2:
-            name_lines.append(line)
-    if name_lines:
-        parsed["name"] = " ".join(name_lines)[:180]
-    gender_text = normalize(texts["sex_or_gender"])
-    gender = re.search(r"(?:SEXO|G[ÉE]NERO)\s*[:.]?\s*(NB|H|M)\b", gender_text)
-    if not gender:
-        gender = re.search(r"\b(NB|H|M)\b", gender_text)
-    if gender:
-        parsed["sex_or_gender"] = gender.group(1)
-    return parsed, " ".join(raw_words)
+    return parse_front_document(reconstructed), reconstructed
 
 
 def parse_front_document(text: str) -> dict[str, str]:
@@ -410,10 +359,10 @@ def extract_image(data: bytes, side: str | None = None) -> tuple[dict[str, str],
                     merged[key] = value
 
         if side == "front":
-            region_fields, region_text = _front_fields_from_position(clean)
+            region_fields, region_text = _front_fields_from_layout(clean)
             raw_parts.append(region_text)
             for key, value in region_fields.items():
-                if value and (key == "name" or not merged[key]):
+                if value and (key in {"name", "address"} or not merged[key]):
                     merged[key] = value
 
         # La versión sin normalizar conserva detalles que a veces se pierden
