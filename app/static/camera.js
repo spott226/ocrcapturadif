@@ -42,8 +42,12 @@
       await video.play();
       const track = stream.getVideoTracks()[0];
       const capabilities = track.getCapabilities?.() || {};
-      if (capabilities.focusMode?.includes("continuous")) {
-        track.applyConstraints({ advanced: [{ focusMode: "continuous" }] }).catch(() => {});
+      const cameraSettings = {};
+      if (capabilities.focusMode?.includes("continuous")) cameraSettings.focusMode = "continuous";
+      if (capabilities.exposureMode?.includes("continuous")) cameraSettings.exposureMode = "continuous";
+      if (capabilities.whiteBalanceMode?.includes("continuous")) cameraSettings.whiteBalanceMode = "continuous";
+      if (Object.keys(cameraSettings).length) {
+        track.applyConstraints({ advanced: [cameraSettings] }).catch(() => {});
       }
     } catch (_error) {
       closeCamera();

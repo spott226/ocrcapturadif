@@ -1,8 +1,8 @@
 from io import BytesIO
 
-from PIL import Image
+from PIL import Image, ImageDraw, ImageStat
 
-from app.ocr import extract_image, parse_ine_text
+from app.ocr import extract_image, parse_ine_text, prepare_ocr_images
 
 
 def test_parse_fictitious_ine_text():
@@ -121,3 +121,15 @@ GOMEZ<VELAZQUEZ<<MARGARITA<<<<"""
     assert back_data["cic"] == "1382528441"
     assert back_data["ocr_code"] == "3904033366874"
     assert back_data["name"] == "GOMEZ VELAZQUEZ MARGARITA"
+
+
+def test_shadow_correction_balances_uneven_illumination():
+    image = Image.new("L", (1800, 1000), 220)
+    drawing = ImageDraw.Draw(image)
+    drawing.rectangle((0, 0, 899, 999), fill=90)
+
+    _clean, shadowless, _threshold = prepare_ocr_images(image)
+    dark_side = ImageStat.Stat(shadowless.crop((150, 150, 700, 850))).mean[0]
+    light_side = ImageStat.Stat(shadowless.crop((1100, 150, 1650, 850))).mean[0]
+
+    assert abs(dark_side - light_side) < 15

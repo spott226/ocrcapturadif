@@ -1,7 +1,7 @@
 import re
 from dataclasses import dataclass, asdict
 from io import BytesIO
-from PIL import Image, ImageEnhance, ImageFilter, ImageOps, ImageStat
+from PIL import Image, ImageChops, ImageEnhance, ImageFilter, ImageOps, ImageStat
 import pytesseract
 
 
@@ -130,32 +130,45 @@ def parse_ine_text(text: str) -> dict[str, str]:
     return asdict(result)
 
 
+def prepare_ocr_images(image: Image.Image) -> tuple[Image.Image, Image.Image, Image.Image]:
+    image = ImageOps.exif_transpose(image).convert("L")
+    longest_side = max(image.size)
+    if longest_side < 1800:
+        factor = 1800 / longest_side
+        image = image.resize(
+            (int(image.width * factor), int(image.height * factor)),
+            Image.Resampling.LANCZOS,
+        )
+    elif longest_side > 3200:
+        factor = 3200 / longest_side
+        image = image.resize(
+            (int(image.width * factor), int(image.height * factor)),
+            Image.Resampling.LANCZOS,
+        )
+
+    clean = ImageOps.autocontrast(image, cutoff=1)
+    clean = ImageEnhance.Contrast(clean).enhance(1.25)
+    clean = clean.filter(ImageFilter.UnsharpMask(radius=1.3, percent=160, threshold=3))
+
+    # Estima la iluminación de fondo y la resta de la imagen. Esto empareja
+    # zonas claras y oscuras sin guardar ni enviar una copia procesada.
+    blur_radius = max(18, min(clean.size) // 34)
+    illumination = clean.filter(ImageFilter.GaussianBlur(radius=blur_radius))
+    shadowless = ImageOps.invert(ImageChops.difference(clean, illumination))
+    shadowless = ImageOps.autocontrast(shadowless, cutoff=1)
+    shadowless = shadowless.filter(ImageFilter.UnsharpMask(radius=1.0, percent=150, threshold=2))
+
+    average = ImageStat.Stat(shadowless).mean[0]
+    threshold_level = max(145, min(215, int(average * 0.91)))
+    threshold = shadowless.point(lambda pixel: 255 if pixel > threshold_level else 0)
+    return clean, shadowless, threshold
+
+
 def extract_image(data: bytes) -> tuple[dict[str, str], str]:
     with Image.open(BytesIO(data)) as image:
-        image = ImageOps.exif_transpose(image).convert("L")
-        longest_side = max(image.size)
-        if longest_side < 1800:
-            factor = 1800 / longest_side
-            image = image.resize(
-                (int(image.width * factor), int(image.height * factor)),
-                Image.Resampling.LANCZOS,
-            )
-        elif longest_side > 3200:
-            factor = 3200 / longest_side
-            image = image.resize(
-                (int(image.width * factor), int(image.height * factor)),
-                Image.Resampling.LANCZOS,
-            )
-
-        clean = ImageOps.autocontrast(image, cutoff=1)
-        clean = ImageEnhance.Contrast(clean).enhance(1.35)
-        clean = clean.filter(ImageFilter.UnsharpMask(radius=1.4, percent=175, threshold=3))
-        average = ImageStat.Stat(clean).mean[0]
-        threshold_level = max(135, min(205, int(average * 0.93)))
-        threshold = clean.point(lambda pixel: 255 if pixel > threshold_level else 0)
-
+        clean, shadowless, threshold = prepare_ocr_images(image)
         passes = (
-            (clean, "--oem 3 --psm 11"),
+            (shadowless, "--oem 3 --psm 11"),
             (threshold, "--oem 3 --psm 6"),
         )
         merged = asdict(Extracted())
@@ -169,5 +182,15 @@ def extract_image(data: bytes) -> tuple[dict[str, str], str]:
             for key, value in fields.items():
                 if value and not merged[key]:
                     merged[key] = value
+
+        # La versión sin normalizar conserva detalles que a veces se pierden
+        # al quitar una sombra muy fuerte. Solo se usa si las dos lecturas
+        # principales no encontraron ningún campo.
+        if not any(merged.values()):
+            text = pytesseract.image_to_string(
+                clean, lang="spa", config="--oem 3 --psm 11", timeout=25,
+            )
+            raw_parts.append(text)
+            merged.update({key: value for key, value in parse_ine_text(text).items() if value})
 
     return merged, "\n--- SEGUNDA LECTURA ---\n".join(raw_parts)
