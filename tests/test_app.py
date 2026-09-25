@@ -38,7 +38,8 @@ def test_login_save_and_export_fictitious_record():
         saved = client.post("/registros", data={
             "name": "PERSONA FICTICIA PRUEBA", "address": "DOMICILIO FICTICIO",
             "curp": "PULA900101MDFRPN09", "voter_key": "PRLBAN90010109M100",
-            "valid_until": "2036", "csrf": csrf,
+            "birth_date": "01/01/1990", "section": "1234", "cic": "123456789",
+            "ocr_code": "1234567890123", "valid_until": "2036", "csrf": csrf,
         })
         assert saved.status_code == 200
         exported = client.get("/exportar.xlsx")

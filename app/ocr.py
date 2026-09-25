@@ -11,6 +11,16 @@ class Extracted:
     address: str = ""
     curp: str = ""
     voter_key: str = ""
+    birth_date: str = ""
+    sex_or_gender: str = ""
+    state_code: str = ""
+    municipality_code: str = ""
+    section: str = ""
+    locality_code: str = ""
+    registration_year: str = ""
+    issue_year: str = ""
+    cic: str = ""
+    ocr_code: str = ""
     valid_until: str = ""
 
 
@@ -26,13 +36,43 @@ def parse_ine_text(text: str) -> dict[str, str]:
     curp = re.search(r"\b[A-Z]{4}\d{6}[HM][A-Z]{5}[A-Z0-9]\d\b", joined)
     voter = re.search(r"(?:CLAVE DE ELECTOR|ELECTOR)\s*[:.]?\s*([A-Z0-9]{16,20})", joined)
     valid = re.search(r"(?:VIGENCIA|VÁLIDA? HASTA)\s*[:.]?\s*(\d{4}(?:\s*[-/]\s*\d{4})?|\d{2}[/.-]\d{2}[/.-]\d{4})", joined)
+    birth = re.search(r"(?:FECHA DE NACIMIENTO|NACIMIENTO)\s*[:.]?\s*(\d{2}[/.-]\d{2}[/.-]\d{4})", joined)
+    sex = re.search(r"(?:SEXO|G[ÉE]NERO)\s*[:.]?\s*(NB|H|M)\b", joined)
+    section = re.search(r"SECCI[ÓO]N\s*[:.]?\s*(\d{3,5})", joined)
+    registration = re.search(r"A[ÑN]O DE REGISTRO\s*[:.]?\s*(\d{4}(?:\s*[-/]?\s*\d{2})?)", joined)
+    issue = re.search(r"EMISI[ÓO]N\s*[:.]?\s*(\d{4})", joined)
+    state = re.search(r"ESTADO\s*[:.]?\s*([A-Z0-9]{1,20})", joined)
+    municipality = re.search(r"MUNICIPIO\s*[:.]?\s*([A-Z0-9]{1,20})", joined)
+    locality = re.search(r"LOCALIDAD\s*[:.]?\s*([A-Z0-9]{1,20})", joined)
+    cic = re.search(r"\bCIC\s*[:.]?\s*([A-Z0-9]{8,20})\b", joined)
+    ocr_code = re.search(r"\bOCR\s*[:.]?\s*(\d{12,13})\b", joined)
     if curp:
         result.curp = curp.group(0)
     if voter:
         result.voter_key = voter.group(1)
     if valid:
         result.valid_until = valid.group(1).replace(" ", "")
-    section_label = re.compile(r"^(?:NOMBRE|DOMICILIO|CURP|CLAVE(?: DE ELECTOR)?|VIGENCIA|SEXO|FECHA DE NACIMIENTO)\b")
+    if birth:
+        result.birth_date = birth.group(1)
+    if sex:
+        result.sex_or_gender = sex.group(1)
+    if section:
+        result.section = section.group(1)
+    if registration:
+        result.registration_year = registration.group(1).replace(" ", "")
+    if issue:
+        result.issue_year = issue.group(1)
+    if state:
+        result.state_code = state.group(1)
+    if municipality:
+        result.municipality_code = municipality.group(1)
+    if locality:
+        result.locality_code = locality.group(1)
+    if cic:
+        result.cic = cic.group(1)
+    if ocr_code:
+        result.ocr_code = ocr_code.group(1)
+    section_label = re.compile(r"^(?:NOMBRE|DOMICILIO|CURP|CLAVE(?: DE ELECTOR)?|VIGENCIA|SEXO|G[ÉE]NERO|FECHA DE NACIMIENTO|NACIMIENTO|SECCI[ÓO]N|A[ÑN]O DE REGISTRO|EMISI[ÓO]N|ESTADO|MUNICIPIO|LOCALIDAD|CIC|OCR)\b")
     for i, line in enumerate(lines):
         if line.startswith("NOMBRE"):
             candidates = []

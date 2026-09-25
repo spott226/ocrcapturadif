@@ -7,7 +7,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Stre
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from openpyxl import Workbook
-from sqlalchemy import or_, select
+from sqlalchemy import inspect, or_, select, text
 from sqlalchemy.orm import Session
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.middleware.httpsredirect import HTTPSRedirectMiddleware
@@ -20,10 +20,32 @@ from .security import csrf_token, password_hash, valid_csrf, verify_password
 settings = get_settings()
 BASE = Path(__file__).resolve().parent
 
+EXTRA_COLUMNS = {
+    "birth_date": "VARCHAR(20) NOT NULL DEFAULT ''",
+    "sex_or_gender": "VARCHAR(20) NOT NULL DEFAULT ''",
+    "state_code": "VARCHAR(20) NOT NULL DEFAULT ''",
+    "municipality_code": "VARCHAR(20) NOT NULL DEFAULT ''",
+    "section": "VARCHAR(10) NOT NULL DEFAULT ''",
+    "locality_code": "VARCHAR(20) NOT NULL DEFAULT ''",
+    "registration_year": "VARCHAR(20) NOT NULL DEFAULT ''",
+    "issue_year": "VARCHAR(10) NOT NULL DEFAULT ''",
+    "cic": "VARCHAR(20) NOT NULL DEFAULT ''",
+    "ocr_code": "VARCHAR(20) NOT NULL DEFAULT ''",
+}
+
+
+def migrate_existing_database():
+    existing = {column["name"] for column in inspect(engine).get_columns("people")}
+    with engine.begin() as connection:
+        for column, definition in EXTRA_COLUMNS.items():
+            if column not in existing:
+                connection.execute(text(f"ALTER TABLE people ADD COLUMN {column} {definition}"))
+
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     Base.metadata.create_all(engine)
+    migrate_existing_database()
     yield
 
 
@@ -124,7 +146,11 @@ async def read_upload(upload: UploadFile) -> bytes:
 async def ocr(request: Request, front: UploadFile = File(...), back: UploadFile | None = File(None), csrf: str = Form(...)):
     require_user(request)
     require_csrf(request, csrf)
-    merged = {"name": "", "address": "", "curp": "", "voter_key": "", "valid_until": ""}
+    merged = {key: "" for key in (
+        "name", "address", "curp", "voter_key", "birth_date", "sex_or_gender",
+        "state_code", "municipality_code", "section", "locality_code",
+        "registration_year", "issue_year", "cic", "ocr_code", "valid_until",
+    )}
     try:
         uploads = [front] + ([back] if back and back.filename else [])
         for upload in uploads:
@@ -140,19 +166,38 @@ async def ocr(request: Request, front: UploadFile = File(...), back: UploadFile 
 
 
 @app.post("/registros", response_class=HTMLResponse)
-def save(request: Request, name: str = Form(...), address: str = Form(""), curp: str = Form(""), voter_key: str = Form(""), valid_until: str = Form(""), csrf: str = Form(...), db: Session = Depends(get_db)):
+def save(
+    request: Request, name: str = Form(...), address: str = Form(""),
+    curp: str = Form(""), voter_key: str = Form(""), birth_date: str = Form(""),
+    sex_or_gender: str = Form(""), state_code: str = Form(""),
+    municipality_code: str = Form(""), section: str = Form(""),
+    locality_code: str = Form(""), registration_year: str = Form(""),
+    issue_year: str = Form(""), cic: str = Form(""), ocr_code: str = Form(""),
+    valid_until: str = Form(""), csrf: str = Form(...), db: Session = Depends(get_db),
+):
     user = require_user(request)
     require_csrf(request, csrf)
     name, curp, voter_key = name.strip().upper(), curp.strip().upper(), voter_key.strip().upper()
+    cic, ocr_code = cic.strip().upper(), ocr_code.strip().upper()
     if curp and not re.fullmatch(r"[A-Z]{4}\d{6}[HM][A-Z]{5}[A-Z0-9]\d", curp):
         return page(request, "review.html", data=locals(), error="La CURP no tiene un formato válido.")
     conditions = []
     if curp: conditions.append(Person.curp == curp)
     if voter_key: conditions.append(Person.voter_key == voter_key)
+    if cic: conditions.append(Person.cic == cic)
+    if ocr_code: conditions.append(Person.ocr_code == ocr_code)
     duplicates = db.scalars(select(Person).where(or_(*conditions))) .all() if conditions else []
     if duplicates:
         return page(request, "review.html", data=locals(), duplicates=duplicates, error="Posible duplicado: revise antes de continuar.")
-    person = Person(name=name[:180], address=address.strip().upper()[:500], curp=curp[:18], voter_key=voter_key[:24], valid_until=valid_until.strip()[:20], created_by=user)
+    person = Person(
+        name=name[:180], address=address.strip().upper()[:500], curp=curp[:18],
+        voter_key=voter_key[:24], birth_date=birth_date.strip()[:20],
+        sex_or_gender=sex_or_gender.strip().upper()[:20], state_code=state_code.strip().upper()[:20],
+        municipality_code=municipality_code.strip().upper()[:20], section=section.strip()[:10],
+        locality_code=locality_code.strip().upper()[:20], registration_year=registration_year.strip()[:20],
+        issue_year=issue_year.strip()[:10], cic=cic[:20], ocr_code=ocr_code[:20],
+        valid_until=valid_until.strip()[:20], created_by=user,
+    )
     db.add(person)
     db.commit()
     return RedirectResponse("/?guardado=1", status_code=303)
@@ -165,9 +210,9 @@ def export(request: Request, db: Session = Depends(get_db)):
     wb = Workbook()
     ws = wb.active
     ws.title = "Registros DIF"
-    ws.append(["ID", "Nombre", "Domicilio", "CURP", "Clave de elector", "Vigencia", "Capturó", "Fecha"])
+    ws.append(["ID", "Nombre", "Domicilio", "CURP", "Clave de elector", "Fecha de nacimiento", "Sexo/Género", "Entidad", "Municipio", "Sección", "Localidad", "Año de registro", "Emisión", "CIC", "OCR", "Vigencia", "Capturó", "Fecha de captura"])
     for row in rows:
-        ws.append([row.id, row.name, row.address, row.curp, row.voter_key, row.valid_until, row.created_by, row.created_at.replace(tzinfo=None)])
+        ws.append([row.id, row.name, row.address, row.curp, row.voter_key, row.birth_date, row.sex_or_gender, row.state_code, row.municipality_code, row.section, row.locality_code, row.registration_year, row.issue_year, row.cic, row.ocr_code, row.valid_until, row.created_by, row.created_at.replace(tzinfo=None)])
     ws.freeze_panes = "A2"
     for column in ws.columns:
         ws.column_dimensions[column[0].column_letter].width = min(max(len(str(c.value or "")) for c in column) + 2, 55)

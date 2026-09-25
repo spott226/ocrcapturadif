@@ -1,3 +1,18 @@
 {% extends "base.html" %}{% block content %}<section class="card"><p class="eyebrow">Paso 2 de 2</p><h1>Revise y corrija</h1><p class="muted">El OCR puede equivocarse. Compare cada dato con la credencial antes de guardar.</p>{% if error %}<div class="alert">{{ error }}</div>{% endif %}{% if duplicates %}<div class="duplicates"><strong>Coincidencias encontradas</strong>{% for p in duplicates %}<p>{{ p.name }} · {{ p.curp or p.voter_key }}</p>{% endfor %}</div>{% endif %}
-<form method="post" action="/registros" class="form-grid"><input type="hidden" name="csrf" value="{{ csrf }}"><label class="wide">Nombre completo<input name="name" value="{{ data.name }}" maxlength="180" required></label><label class="wide">Domicilio<textarea name="address" maxlength="500" rows="3">{{ data.address }}</textarea></label><label>CURP<input name="curp" value="{{ data.curp }}" maxlength="18" pattern="[A-Za-z]{4}[0-9]{6}[HhMm][A-Za-z]{5}[A-Za-z0-9][0-9]"></label><label>Clave de elector<input name="voter_key" value="{{ data.voter_key }}" maxlength="24"></label><label>Vigencia<input name="valid_until" value="{{ data.valid_until }}" maxlength="20"></label><div class="actions wide"><a href="/" class="button ghost">Cancelar</a><button>Confirmar y guardar</button></div></form></section>{% endblock %}
-
+<form method="post" action="/registros" class="form-grid"><input type="hidden" name="csrf" value="{{ csrf }}">
+<label class="wide">Nombre completo<input name="name" value="{{ data.name }}" maxlength="180" required></label>
+<label class="wide">Domicilio<textarea name="address" maxlength="500" rows="3">{{ data.address }}</textarea></label>
+<label>CURP<input name="curp" value="{{ data.curp }}" maxlength="18" pattern="[A-Za-z]{4}[0-9]{6}[HhMm][A-Za-z]{5}[A-Za-z0-9][0-9]"></label>
+<label>Clave de elector<input name="voter_key" value="{{ data.voter_key }}" maxlength="24"></label>
+<label>Fecha de nacimiento<input name="birth_date" value="{{ data.birth_date }}" maxlength="20" placeholder="DD/MM/AAAA"></label>
+<label>Sexo o género<input name="sex_or_gender" value="{{ data.sex_or_gender }}" maxlength="20" placeholder="H, M o NB"></label>
+<label>Entidad / estado<input name="state_code" value="{{ data.state_code }}" maxlength="20"></label>
+<label>Municipio<input name="municipality_code" value="{{ data.municipality_code }}" maxlength="20"></label>
+<label>Sección electoral<input name="section" value="{{ data.section }}" maxlength="10"></label>
+<label>Localidad<input name="locality_code" value="{{ data.locality_code }}" maxlength="20"></label>
+<label>Año de registro<input name="registration_year" value="{{ data.registration_year }}" maxlength="20"></label>
+<label>Año de emisión<input name="issue_year" value="{{ data.issue_year }}" maxlength="10"></label>
+<label>CIC<input name="cic" value="{{ data.cic }}" maxlength="20"></label>
+<label>OCR del reverso<input name="ocr_code" value="{{ data.ocr_code }}" maxlength="20" inputmode="numeric"></label>
+<label>Vigencia<input name="valid_until" value="{{ data.valid_until }}" maxlength="20"></label>
+<div class="actions wide"><a href="/" class="button ghost">Cancelar</a><button>Confirmar y guardar</button></div></form></section>{% endblock %}
