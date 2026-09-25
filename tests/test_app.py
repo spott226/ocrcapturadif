@@ -45,3 +45,12 @@ def test_login_save_and_export_fictitious_record():
         exported = client.get("/exportar.xlsx")
         assert exported.status_code == 200
         assert exported.content[:2] == b"PK"
+        with SessionLocal() as db:
+            person_id = db.query(Person.id).filter(Person.curp == "PULA900101MDFRPN09").scalar()
+        deleted = client.post(
+            f"/registros/{person_id}/eliminar", data={"csrf": csrf},
+            follow_redirects=False,
+        )
+        assert deleted.status_code == 303
+        with SessionLocal() as db:
+            assert db.get(Person, person_id) is None

@@ -203,6 +203,20 @@ def save(
     return RedirectResponse("/?guardado=1", status_code=303)
 
 
+@app.post("/registros/{person_id}/eliminar")
+def delete_record(
+    person_id: int, request: Request, csrf: str = Form(...), db: Session = Depends(get_db),
+):
+    require_user(request)
+    require_csrf(request, csrf)
+    person = db.get(Person, person_id)
+    if not person:
+        raise HTTPException(404, "Registro no encontrado")
+    db.delete(person)
+    db.commit()
+    return RedirectResponse("/?eliminado=1", status_code=303)
+
+
 @app.get("/exportar.xlsx")
 def export(request: Request, db: Session = Depends(get_db)):
     require_user(request)
