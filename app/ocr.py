@@ -103,6 +103,30 @@ def parse_ine_text(text: str) -> dict[str, str]:
                     break
                 address_lines.append(candidate)
             result.address = " ".join(address_lines)[:500]
+
+    # En las INE nuevas, el reverso concentra CIC/OCR y el nombre en tres
+    # renglones legibles por máquina, sin imprimir las etiquetas "CIC" u "OCR".
+    mrz_top = re.search(r"\bIDMEX\s*([A-Z0-9]{8,15})<{1,3}(\d{12,14})\b", joined)
+    if mrz_top:
+        if not result.cic:
+            result.cic = mrz_top.group(1)
+        if not result.ocr_code:
+            result.ocr_code = mrz_top.group(2)
+    if not result.name:
+        for line in lines:
+            compact = line.replace(" ", "")
+            if (
+                "<<" in compact
+                and not compact.startswith("IDMEX")
+                and re.fullmatch(r"[A-Z<]{8,}", compact)
+            ):
+                surnames, given_names = compact.split("<<", 1)
+                candidate = " ".join(
+                    part for part in (surnames.replace("<", " "), given_names.replace("<", " "))
+                    if part.strip()
+                )
+                result.name = " ".join(candidate.split())[:180]
+                break
     return asdict(result)
 
 

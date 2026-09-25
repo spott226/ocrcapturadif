@@ -84,3 +84,40 @@ def test_two_ocr_passes_merge_fictitious_results(monkeypatch):
     assert data["voter_key"] == "PRLBAN90010109M100"
     assert data["valid_until"] == "2036"
     assert "SEGUNDA LECTURA" in raw
+
+
+def test_new_ine_front_sections_and_back_machine_readable_lines():
+    front = """INSTITUTO NACIONAL ELECTORAL
+NOMBRE
+GOMEZ
+VELAZQUEZ
+MARGARITA
+DOMICILIO
+VIAL TLALPAN 100
+COL ARENAL TEPEPAN 14610
+TLALPAN, CDMX
+CLAVE DE ELECTOR GMMMR80070501M100
+CURP GOVM800705MCLMLR01
+AÑO DE REGISTRO 2019 03
+FECHA DE NACIMIENTO 05/07/1980
+SECCIÓN 4094
+VIGENCIA 2026-2036
+GÉNERO NB"""
+    back = """IDMEX1382528441<<3904033366874
+701204M3512311MEX<<01<<12345<1
+GOMEZ<VELAZQUEZ<<MARGARITA<<<<"""
+
+    front_data = parse_ine_text(front)
+    back_data = parse_ine_text(back)
+
+    assert front_data["name"] == "GOMEZ VELAZQUEZ MARGARITA"
+    assert front_data["voter_key"] == "GMMMR80070501M100"
+    assert front_data["curp"] == "GOVM800705MCLMLR01"
+    assert front_data["birth_date"] == "05/07/1980"
+    assert front_data["section"] == "4094"
+    assert front_data["registration_year"] == "201903"
+    assert front_data["valid_until"] == "2026-2036"
+    assert front_data["sex_or_gender"] == "NB"
+    assert back_data["cic"] == "1382528441"
+    assert back_data["ocr_code"] == "3904033366874"
+    assert back_data["name"] == "GOMEZ VELAZQUEZ MARGARITA"

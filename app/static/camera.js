@@ -25,7 +25,9 @@
   async function openCamera(fieldName) {
     target = document.querySelector(`#${fieldName}`);
     title.textContent = fieldName === "front" ? "Fotografiar frente" : "Fotografiar reverso";
-    message.textContent = "Centre la credencial completa, use buena luz y evite reflejos.";
+    message.textContent = fieldName === "front"
+      ? "Frente: centre toda la credencial. Deben verse con nitidez CURP, clave, sección y vigencia."
+      : "Reverso: centre toda la credencial y enfoque especialmente las tres líneas de la parte inferior.";
     if (!navigator.mediaDevices?.getUserMedia) {
       target.click();
       return;
