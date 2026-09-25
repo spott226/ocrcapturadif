@@ -10,6 +10,7 @@ from app.ocr import (
     parse_front_regions,
     parse_ine_text,
     prepare_ocr_images,
+    sanitize_extracted,
 )
 
 
@@ -57,6 +58,36 @@ def test_empty_text_does_not_invent_data():
         "registration_year": "", "issue_year": "", "cic": "",
         "ocr_code": "", "valid_until": "",
     }
+
+
+def test_sanitizer_removes_symbols_and_rejects_malformed_fields():
+    fields = {
+        "name": "MONT@OYA++ SALOMON / CHRISTOPHER LENIEL ###",
+        "address": "CALLE # 10@@\nCOL. CENTRO ++\nAGUASCALIENTES, AGS",
+        "curp": "NO-ES-UNA-CURP",
+        "voter_key": "ABC+123",
+        "birth_date": "39/19/2020",
+        "sex_or_gender": "?",
+        "section": "40+94",
+        "registration_year": "2019 03",
+        "cic": "123?456",
+        "ocr_code": "3904033366874",
+        "valid_until": "2026 - 2036",
+    }
+
+    clean = sanitize_extracted(fields)
+
+    assert clean["name"] == "MONTOYA SALOMON CHRISTOPHER LENIEL"
+    assert clean["address"] == "CALLE # 10\nCOL. CENTRO\nAGUASCALIENTES, AGS"
+    assert clean["curp"] == ""
+    assert clean["voter_key"] == ""
+    assert clean["birth_date"] == ""
+    assert clean["sex_or_gender"] == ""
+    assert clean["section"] == "4094"
+    assert clean["registration_year"] == "201903"
+    assert clean["cic"] == ""
+    assert clean["ocr_code"] == "3904033366874"
+    assert clean["valid_until"] == "2026-2036"
 
 
 def test_common_ocr_label_confusions_are_tolerated():

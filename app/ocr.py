@@ -27,6 +27,59 @@ class Extracted:
     valid_until: str = ""
 
 
+def sanitize_extracted(fields: dict[str, str]) -> dict[str, str]:
+    """Elimina ruido OCR y descarta valores que no cumplen el formato del campo."""
+    clean = {key: str(value or "").strip() for key, value in fields.items()}
+
+    name = normalize(clean.get("name", "")).replace("\n", " ")
+    name = re.split(
+        r"\b(?:DOMICILIO|CURP|CLAVE DE ELECTOR|FECHA DE NACIMIENTO|SECCI[ÓO]N|VIGENCIA)\b",
+        name,
+    )[0]
+    name = re.sub(r"[/|]+", " ", name)
+    name = re.sub(r"[^A-ZÁÉÍÓÚÜÑ' -]", "", name)
+    name = " ".join(word for word in name.split() if word != "NOMBRE")
+    clean["name"] = name[:180] if len(name.replace(" ", "")) >= 4 else ""
+
+    address_lines = []
+    for line in normalize(clean.get("address", "")).splitlines()[:3]:
+        line = re.sub(r"[^A-ZÁÉÍÓÚÜÑ0-9 .,#/'-]", " ", line)
+        line = " ".join(line.split()).strip(" ,.-")
+        if len(line) >= 3 and line != "DOMICILIO":
+            address_lines.append(line)
+    clean["address"] = "\n".join(address_lines)[:500]
+
+    compact_rules = {
+        "curp": r"[A-Z]{4}\d{6}[HM][A-Z]{5}[A-Z0-9]\d",
+        "voter_key": r"[A-Z0-9]{16,20}",
+        "section": r"\d{3,5}",
+        "registration_year": r"(?:19|20)\d{2}(?:\d{2})?",
+        "cic": r"\d{8,15}",
+        "ocr_code": r"\d{12,14}",
+    }
+    for field, pattern in compact_rules.items():
+        value = re.sub(r"[^A-Z0-9]", "", clean.get(field, "").upper())
+        clean[field] = value if re.fullmatch(pattern, value) else ""
+
+    birth = clean.get("birth_date", "").replace("-", "/").replace(".", "/")
+    if re.fullmatch(r"\d{2}/\d{2}/\d{4}", birth):
+        try:
+            datetime.strptime(birth, "%d/%m/%Y")
+            clean["birth_date"] = birth
+        except ValueError:
+            clean["birth_date"] = ""
+    else:
+        clean["birth_date"] = ""
+
+    gender = clean.get("sex_or_gender", "").upper()
+    clean["sex_or_gender"] = gender if gender in {"H", "M", "NB"} else ""
+    validity = re.sub(r"\s", "", clean.get("valid_until", ""))
+    clean["valid_until"] = validity if re.fullmatch(
+        r"(?:20\d{2})(?:-(?:20\d{2}))?|\d{2}/\d{2}/20\d{2}", validity,
+    ) else ""
+    return clean
+
+
 def normalize(text: str) -> str:
     normalized = "\n".join(" ".join(line.upper().split()) for line in text.splitlines() if line.strip())
     # Corrige únicamente etiquetas conocidas que Tesseract suele confundir.
@@ -535,6 +588,7 @@ def extract_image(data: bytes, side: str | None = None) -> tuple[dict[str, str],
 
         if side == "front":
             region_fields, region_text = _front_fields_from_regions(shadowless)
+            region_fields = sanitize_extracted(region_fields)
             raw_parts.append(region_text)
             for key, value in region_fields.items():
                 if not value:
@@ -542,7 +596,7 @@ def extract_image(data: bytes, side: str | None = None) -> tuple[dict[str, str],
                 if key in {"name", "address"}:
                     if len(re.sub(r"\W", "", value)) >= len(re.sub(r"\W", "", merged[key])):
                         merged[key] = value
-                else:
+                elif not merged[key]:
                     merged[key] = value
 
         if side == "back":
@@ -560,4 +614,4 @@ def extract_image(data: bytes, side: str | None = None) -> tuple[dict[str, str],
             raw_parts.append(text)
             merged.update({key: value for key, value in parse_ine_text(text).items() if value})
 
-    return merged, "\n--- SEGUNDA LECTURA ---\n".join(raw_parts)
+    return sanitize_extracted(merged), "\n--- SEGUNDA LECTURA ---\n".join(raw_parts)
