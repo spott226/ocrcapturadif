@@ -177,6 +177,7 @@ async def ocr(request: Request, front: UploadFile = File(...), back: UploadFile 
     except HTTPException:
         raise
     except Exception:
+        logger.exception("ocr_failed_without_image_content")
         return page(request, "review.html", data=merged, error="No se pudo leer la imagen. Capture los datos manualmente.")
     if not any(merged.values()):
         return page(

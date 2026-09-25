@@ -148,7 +148,10 @@ def _curp_from_region(text: str) -> str:
             chars[position] = chars[position].translate(OCR_DIGITS)
         # En CURP de personas nacidas antes de 2000, la posición 17 es
         # numérica; a partir de 2000 es una letra.
-        birth_year = int("".join(chars[4:6]))
+        birth_year_text = "".join(chars[4:6])
+        if not birth_year_text.isdigit():
+            continue
+        birth_year = int(birth_year_text)
         if birth_year > datetime.now().year % 100:
             chars[16] = chars[16].translate(OCR_DIGITS)
         else:
@@ -202,16 +205,70 @@ def parse_front_regions(
     return result
 
 
-def _read_region(image: Image.Image, box: tuple[float, float, float, float], config: str) -> str:
+def parse_front_document(text: str) -> dict[str, str]:
+    result = parse_ine_text(text)
+    normalized = normalize(text)
+    if not result["curp"]:
+        result["curp"] = _curp_from_region(normalized)
+
+    noisy_digit = r"[0-9OQDILZSBG]"
+    if not result["birth_date"]:
+        match = re.search(
+            rf"(?:FECHA DE NACIMIENTO|NACIMIENTO)\s*[:.]?\s*({noisy_digit}{{2}}[/.-]?{noisy_digit}{{2}}[/.-]?{noisy_digit}{{4}})",
+            normalized,
+        )
+        if match:
+            digits = re.sub(r"\D", "", match.group(1).translate(OCR_DIGITS))
+            if len(digits) == 8:
+                result["birth_date"] = f"{digits[:2]}/{digits[2:4]}/{digits[4:]}"
+    if not result["section"]:
+        match = re.search(rf"SECCI[ÓO]N\s*[:.]?\s*({noisy_digit}{{3,5}})", normalized)
+        if match:
+            result["section"] = match.group(1).translate(OCR_DIGITS)
+    if not result["registration_year"]:
+        match = re.search(
+            rf"A[ÑN]O DE REGISTRO\s*[:.]?\s*({noisy_digit}{{4}})(?:\s*[-/]?\s*({noisy_digit}{{2}}))?",
+            normalized,
+        )
+        if match:
+            result["registration_year"] = "".join(
+                part.translate(OCR_DIGITS) for part in match.groups() if part
+            )
+    if not result["valid_until"]:
+        match = re.search(
+            rf"VIGENCIA\s*[:.]?\s*({noisy_digit}{{4}})(?:\s*[-/]\s*({noisy_digit}{{4}}))?",
+            normalized,
+        )
+        if match:
+            years = [part.translate(OCR_DIGITS) for part in match.groups() if part]
+            result["valid_until"] = "-".join(years)
+    return result
+
+
+def _safe_ocr(image: Image.Image, config: str, timeout: int = 15) -> str:
+    try:
+        return pytesseract.image_to_string(
+            image, lang="spa", config=config, timeout=timeout,
+        )
+    except (RuntimeError, pytesseract.TesseractError):
+        return ""
+
+
+def _front_zones_image(image: Image.Image) -> Image.Image:
     width, height = image.size
-    region = image.crop((
-        int(width * box[0]), int(height * box[1]),
-        int(width * box[2]), int(height * box[3]),
-    ))
-    if region.width < 1200:
-        factor = 1200 / region.width
-        region = region.resize((1200, int(region.height * factor)), Image.Resampling.LANCZOS)
-    return pytesseract.image_to_string(region, lang="spa", config=config, timeout=15)
+    address = image.crop((int(width * .27), int(height * .40), int(width * .80), int(height * .72)))
+    lower = image.crop((int(width * .27), int(height * .65), int(width * .96), int(height * .99)))
+    target_width = 1500
+    prepared = []
+    for region in (address, lower):
+        factor = target_width / region.width
+        prepared.append(region.resize((target_width, int(region.height * factor)), Image.Resampling.LANCZOS))
+    result = Image.new("L", (target_width, sum(region.height for region in prepared) + 50), 255)
+    y = 0
+    for region in prepared:
+        result.paste(region, (0, y))
+        y += region.height + 50
+    return result
 
 
 def prepare_ocr_images(image: Image.Image) -> tuple[Image.Image, Image.Image, Image.Image]:
@@ -255,20 +312,14 @@ def extract_image(data: bytes, side: str | None = None) -> tuple[dict[str, str],
             (shadowless, "--oem 3 --psm 11"),
             (threshold, "--oem 3 --psm 6"),
         )
-        if side == "front":
-            width, height = shadowless.size
-            detail = shadowless.crop((int(width * .27), int(height * .15), width, int(height * .98)))
-            passes += ((detail, "--oem 3 --psm 11"),)
-        elif side == "back":
+        if side == "back":
             width, height = threshold.size
             machine_lines = threshold.crop((0, int(height * .62), width, height))
             passes += ((machine_lines, "--oem 3 --psm 6"),)
         merged = asdict(Extracted())
         raw_parts = []
         for prepared, config in passes:
-            text = pytesseract.image_to_string(
-                prepared, lang="spa", config=config, timeout=25,
-            )
+            text = _safe_ocr(prepared, config, timeout=15)
             raw_parts.append(text)
             fields = parse_ine_text(text)
             for key, value in fields.items():
@@ -276,16 +327,9 @@ def extract_image(data: bytes, side: str | None = None) -> tuple[dict[str, str],
                     merged[key] = value
 
         if side == "front":
-            region_texts = (
-                _read_region(shadowless, (.29, .43, .76, .71), "--oem 3 --psm 6"),
-                _read_region(clean, (.29, .69, .76, .84), "--oem 3 --psm 6 -c tessedit_char_whitelist=CURPABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"),
-                _read_region(clean, (.29, .79, .57, .98), "--oem 3 --psm 6 -c tessedit_char_whitelist=0123456789/.-"),
-                _read_region(clean, (.52, .79, .70, .98), "--oem 3 --psm 6 -c tessedit_char_whitelist=0123456789"),
-                _read_region(clean, (.64, .66, .91, .86), "--oem 3 --psm 6 -c tessedit_char_whitelist=0123456789"),
-                _read_region(clean, (.64, .79, .94, .98), "--oem 3 --psm 6 -c tessedit_char_whitelist=0123456789-"),
-            )
-            raw_parts.extend(region_texts)
-            region_fields = parse_front_regions(*region_texts)
+            region_text = _safe_ocr(_front_zones_image(clean), "--oem 3 --psm 6", timeout=15)
+            raw_parts.append(region_text)
+            region_fields = parse_front_document(region_text)
             for key, value in region_fields.items():
                 if value and not merged[key]:
                     merged[key] = value
@@ -294,9 +338,7 @@ def extract_image(data: bytes, side: str | None = None) -> tuple[dict[str, str],
         # al quitar una sombra muy fuerte. Solo se usa si las dos lecturas
         # principales no encontraron ningún campo.
         if not any(merged.values()):
-            text = pytesseract.image_to_string(
-                clean, lang="spa", config="--oem 3 --psm 11", timeout=25,
-            )
+            text = _safe_ocr(clean, "--oem 3 --psm 11", timeout=12)
             raw_parts.append(text)
             merged.update({key: value for key, value in parse_ine_text(text).items() if value})
 
