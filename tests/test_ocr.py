@@ -2,7 +2,7 @@ from io import BytesIO
 
 from PIL import Image, ImageDraw, ImageStat
 
-from app.ocr import extract_image, parse_ine_text, prepare_ocr_images
+from app.ocr import extract_image, parse_front_regions, parse_ine_text, prepare_ocr_images
 
 
 def test_parse_fictitious_ine_text():
@@ -136,7 +136,7 @@ def test_shadow_correction_balances_uneven_illumination():
 
 
 def test_front_detail_region_can_recover_section(monkeypatch):
-    readings = iter(["", "", "SECCIÓN 4094"])
+    readings = iter(["", "", "SECCIÓN 4094"] + [""] * 6)
     monkeypatch.setattr(
         "app.ocr.pytesseract.image_to_string",
         lambda *_args, **_kwargs: next(readings),
@@ -148,3 +148,21 @@ def test_front_detail_region_can_recover_section(monkeypatch):
     data, _raw = extract_image(stream.getvalue(), side="front")
 
     assert data["section"] == "4094"
+
+
+def test_front_regions_recover_noisy_small_fields():
+    data = parse_front_regions(
+        "DOM1C1L10\nVIAL TLALPAN 100\nCOL ARENAL TEPEPAN 14610\nTLALPAN CDMX",
+        "CURP G0VM8OO7O5MCLMLRO1",
+        "O5/O7/198O",
+        "4O94",
+        "2O19 O3",
+        "2O26-2O36",
+    )
+
+    assert data["address"] == "VIAL TLALPAN 100 COL ARENAL TEPEPAN 14610 TLALPAN CDMX"
+    assert data["curp"] == "GOVM800705MCLMLR01"
+    assert data["birth_date"] == "05/07/1980"
+    assert data["section"] == "4094"
+    assert data["registration_year"] == "201903"
+    assert data["valid_until"] == "2026-2036"

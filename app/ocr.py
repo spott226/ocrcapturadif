@@ -1,5 +1,6 @@
 import re
 from dataclasses import dataclass, asdict
+from datetime import datetime
 from io import BytesIO
 from PIL import Image, ImageChops, ImageEnhance, ImageFilter, ImageOps, ImageStat
 import pytesseract
@@ -130,6 +131,89 @@ def parse_ine_text(text: str) -> dict[str, str]:
     return asdict(result)
 
 
+OCR_DIGITS = str.maketrans({"O": "0", "Q": "0", "D": "0", "I": "1", "L": "1", "Z": "2", "S": "5", "B": "8", "G": "6"})
+OCR_LETTERS = str.maketrans({"0": "O", "1": "I", "2": "Z", "5": "S", "8": "B"})
+
+
+def _curp_from_region(text: str) -> str:
+    compact = re.sub(r"[^A-Z0-9]", "", text.upper()).replace("CURP", "")
+    for start in range(max(1, len(compact) - 17)):
+        token = compact[start:start + 18]
+        if len(token) != 18:
+            continue
+        chars = list(token)
+        for position in (0, 1, 2, 3, 10, 11, 12, 13, 14, 15):
+            chars[position] = chars[position].translate(OCR_LETTERS)
+        for position in (4, 5, 6, 7, 8, 9, 17):
+            chars[position] = chars[position].translate(OCR_DIGITS)
+        # En CURP de personas nacidas antes de 2000, la posición 17 es
+        # numérica; a partir de 2000 es una letra.
+        birth_year = int("".join(chars[4:6]))
+        if birth_year > datetime.now().year % 100:
+            chars[16] = chars[16].translate(OCR_DIGITS)
+        else:
+            chars[16] = chars[16].translate(OCR_LETTERS)
+        candidate = "".join(chars)
+        if re.fullmatch(r"[A-Z]{4}\d{6}[HM][A-Z]{5}[A-Z0-9]\d", candidate):
+            return candidate
+    return ""
+
+
+def parse_front_regions(
+    address_text: str,
+    curp_text: str,
+    birth_text: str,
+    section_text: str,
+    registration_text: str,
+    valid_text: str,
+) -> dict[str, str]:
+    result = asdict(Extracted())
+    address_lines = []
+    for line in normalize(address_text).splitlines():
+        line = re.sub(r"^D[O0]M[I1]C[I1]L[I1][O0]\s*", "", line).strip(" :-")
+        if not line or re.search(r"^(?:CLAVE|CURP|FECHA|SECCI|VIGENCIA|A[ÑN]O)", line):
+            continue
+        if len(re.findall(r"[A-ZÁÉÍÓÚÑ]", line)) >= 3:
+            address_lines.append(line)
+    result["address"] = " ".join(address_lines)[:500]
+    result["curp"] = _curp_from_region(curp_text)
+
+    birth_digits = re.sub(r"[^0-9/.-]", "", birth_text.upper().translate(OCR_DIGITS))
+    birth = re.search(r"(\d{2})[/.-]?(\d{2})[/.-]?(19\d{2}|20\d{2})", birth_digits)
+    if birth:
+        result["birth_date"] = "/".join(birth.groups())
+
+    section_digits = re.sub(r"\D", "", section_text.upper().translate(OCR_DIGITS))
+    section = re.search(r"\d{3,5}", section_digits)
+    if section:
+        result["section"] = section.group(0)
+
+    registration_digits = re.sub(r"\D", "", registration_text.upper().translate(OCR_DIGITS))
+    registration = re.search(r"(19\d{2}|20\d{2})(\d{2})?", registration_digits)
+    if registration:
+        result["registration_year"] = "".join(part for part in registration.groups() if part)
+
+    valid_digits = re.sub(r"[^0-9-]", "", valid_text.upper().translate(OCR_DIGITS))
+    valid = re.search(r"(20\d{2})-?(20\d{2})", valid_digits)
+    if valid:
+        result["valid_until"] = f"{valid.group(1)}-{valid.group(2)}"
+    elif re.search(r"20\d{2}", valid_digits):
+        result["valid_until"] = re.search(r"20\d{2}", valid_digits).group(0)
+    return result
+
+
+def _read_region(image: Image.Image, box: tuple[float, float, float, float], config: str) -> str:
+    width, height = image.size
+    region = image.crop((
+        int(width * box[0]), int(height * box[1]),
+        int(width * box[2]), int(height * box[3]),
+    ))
+    if region.width < 1200:
+        factor = 1200 / region.width
+        region = region.resize((1200, int(region.height * factor)), Image.Resampling.LANCZOS)
+    return pytesseract.image_to_string(region, lang="spa", config=config, timeout=15)
+
+
 def prepare_ocr_images(image: Image.Image) -> tuple[Image.Image, Image.Image, Image.Image]:
     image = ImageOps.exif_transpose(image).convert("L")
     longest_side = max(image.size)
@@ -188,6 +272,21 @@ def extract_image(data: bytes, side: str | None = None) -> tuple[dict[str, str],
             raw_parts.append(text)
             fields = parse_ine_text(text)
             for key, value in fields.items():
+                if value and not merged[key]:
+                    merged[key] = value
+
+        if side == "front":
+            region_texts = (
+                _read_region(shadowless, (.29, .43, .76, .71), "--oem 3 --psm 6"),
+                _read_region(clean, (.29, .69, .76, .84), "--oem 3 --psm 6 -c tessedit_char_whitelist=CURPABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"),
+                _read_region(clean, (.29, .79, .57, .98), "--oem 3 --psm 6 -c tessedit_char_whitelist=0123456789/.-"),
+                _read_region(clean, (.52, .79, .70, .98), "--oem 3 --psm 6 -c tessedit_char_whitelist=0123456789"),
+                _read_region(clean, (.64, .66, .91, .86), "--oem 3 --psm 6 -c tessedit_char_whitelist=0123456789"),
+                _read_region(clean, (.64, .79, .94, .98), "--oem 3 --psm 6 -c tessedit_char_whitelist=0123456789-"),
+            )
+            raw_parts.extend(region_texts)
+            region_fields = parse_front_regions(*region_texts)
+            for key, value in region_fields.items():
                 if value and not merged[key]:
                     merged[key] = value
 

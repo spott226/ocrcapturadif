@@ -45,7 +45,7 @@ def test_login_save_and_export_fictitious_record():
         assert "Fecha de nacimiento" in saved.text
         assert "Domicilio" in saved.text
         assert "Sexo / género" in saved.text
-        assert "Año de emisión" in saved.text
+        assert "Año de emisión" not in saved.text
         assert "OCR del reverso" in saved.text
         assert "PERSONA FICTICIA PRUEBA" in saved.text
         exported = client.get("/exportar.xlsx")
