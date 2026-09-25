@@ -164,13 +164,21 @@ def prepare_ocr_images(image: Image.Image) -> tuple[Image.Image, Image.Image, Im
     return clean, shadowless, threshold
 
 
-def extract_image(data: bytes) -> tuple[dict[str, str], str]:
+def extract_image(data: bytes, side: str | None = None) -> tuple[dict[str, str], str]:
     with Image.open(BytesIO(data)) as image:
         clean, shadowless, threshold = prepare_ocr_images(image)
         passes = (
             (shadowless, "--oem 3 --psm 11"),
             (threshold, "--oem 3 --psm 6"),
         )
+        if side == "front":
+            width, height = shadowless.size
+            detail = shadowless.crop((int(width * .27), int(height * .15), width, int(height * .98)))
+            passes += ((detail, "--oem 3 --psm 11"),)
+        elif side == "back":
+            width, height = threshold.size
+            machine_lines = threshold.crop((0, int(height * .62), width, height))
+            passes += ((machine_lines, "--oem 3 --psm 6"),)
         merged = asdict(Extracted())
         raw_parts = []
         for prepared, config in passes:

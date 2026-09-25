@@ -3,6 +3,8 @@
   if (!dialog) return;
 
   const video = document.querySelector("#camera-video");
+  const stage = document.querySelector("#camera-stage");
+  const guide = document.querySelector("#ine-guide");
   const canvas = document.querySelector("#camera-canvas");
   const title = document.querySelector("#camera-title");
   const message = document.querySelector("#camera-message");
@@ -75,9 +77,23 @@
 
   capture.addEventListener("click", () => {
     if (!target || !video.videoWidth) return;
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    canvas.getContext("2d").drawImage(video, 0, 0, canvas.width, canvas.height);
+    const stageBox = stage.getBoundingClientRect();
+    const guideBox = guide.getBoundingClientRect();
+    const scale = Math.max(stageBox.width / video.videoWidth, stageBox.height / video.videoHeight);
+    const renderedWidth = video.videoWidth * scale;
+    const renderedHeight = video.videoHeight * scale;
+    const hiddenX = (renderedWidth - stageBox.width) / 2;
+    const hiddenY = (renderedHeight - stageBox.height) / 2;
+    const sourceX = Math.max(0, (guideBox.left - stageBox.left + hiddenX) / scale);
+    const sourceY = Math.max(0, (guideBox.top - stageBox.top + hiddenY) / scale);
+    const sourceWidth = Math.min(video.videoWidth - sourceX, guideBox.width / scale);
+    const sourceHeight = Math.min(video.videoHeight - sourceY, guideBox.height / scale);
+    canvas.width = Math.max(1200, Math.round(sourceWidth));
+    canvas.height = Math.round(canvas.width / 1.586);
+    canvas.getContext("2d").drawImage(
+      video, sourceX, sourceY, sourceWidth, sourceHeight,
+      0, 0, canvas.width, canvas.height,
+    );
     canvas.toBlob((blob) => {
       if (!blob) return;
       const file = new File([blob], `${target.id}-ine.jpg`, { type: "image/jpeg" });

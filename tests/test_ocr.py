@@ -133,3 +133,18 @@ def test_shadow_correction_balances_uneven_illumination():
     light_side = ImageStat.Stat(shadowless.crop((1100, 150, 1650, 850))).mean[0]
 
     assert abs(dark_side - light_side) < 15
+
+
+def test_front_detail_region_can_recover_section(monkeypatch):
+    readings = iter(["", "", "SECCIÓN 4094"])
+    monkeypatch.setattr(
+        "app.ocr.pytesseract.image_to_string",
+        lambda *_args, **_kwargs: next(readings),
+    )
+    image = Image.new("RGB", (1600, 1000), "white")
+    stream = BytesIO()
+    image.save(stream, format="JPEG")
+
+    data, _raw = extract_image(stream.getvalue(), side="front")
+
+    assert data["section"] == "4094"

@@ -1,3 +1,4 @@
+import logging
 import re
 from contextlib import asynccontextmanager
 from io import BytesIO
@@ -19,6 +20,7 @@ from .security import csrf_token, password_hash, valid_csrf, verify_password
 
 settings = get_settings()
 BASE = Path(__file__).resolve().parent
+logger = logging.getLogger("uvicorn.error")
 
 EXTRA_COLUMNS = {
     "birth_date": "VARCHAR(20) NOT NULL DEFAULT ''",
@@ -161,9 +163,14 @@ async def ocr(request: Request, front: UploadFile = File(...), back: UploadFile 
         "registration_year", "issue_year", "cic", "ocr_code", "valid_until",
     )}
     try:
-        uploads = [front] + ([back] if back and back.filename else [])
-        for upload in uploads:
-            fields, _raw = extract_image(await read_upload(upload))
+        uploads = [("front", front)] + ([("back", back)] if back and back.filename else [])
+        for side, upload in uploads:
+            image_data = await read_upload(upload)
+            fields, raw = extract_image(image_data, side=side)
+            logger.info(
+                "ocr_metrics side=%s bytes=%s raw_chars=%s fields=%s",
+                side, len(image_data), len(raw), sum(bool(value) for value in fields.values()),
+            )
             for key, value in fields.items():
                 if value and not merged[key]:
                     merged[key] = value
