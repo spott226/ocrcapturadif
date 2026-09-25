@@ -20,7 +20,9 @@ def test_health():
 
 def test_home_requires_authentication():
     with TestClient(app) as client:
-        assert client.get("/").status_code == 401
+        response = client.get("/", follow_redirects=False)
+        assert response.status_code == 303
+        assert response.headers["location"] == "/login"
 
 
 def test_login_save_and_export_fictitious_record():

@@ -1,4 +1,4 @@
-# DIF · Captura INE (MVP)
+# DIF · Captura Apoyos (MVP)
 
 Aplicación web móvil/escritorio para capturar frente y reverso de una INE, proponer datos con Tesseract OCR, revisarlos manualmente, detectar coincidencias y exportar registros a Excel.
 

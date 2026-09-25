@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 from io import BytesIO
 from pathlib import Path
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from openpyxl import Workbook
@@ -27,13 +27,20 @@ async def lifespan(_app: FastAPI):
     yield
 
 
-app = FastAPI(title="DIF · Captura INE", docs_url=None, redoc_url=None, lifespan=lifespan)
+app = FastAPI(title="DIF · Captura Apoyos", docs_url=None, redoc_url=None, lifespan=lifespan)
 app.add_middleware(SessionMiddleware, secret_key=settings.secret_key, https_only=settings.cookie_secure, same_site="lax", max_age=28800)
 if settings.cookie_secure:
     app.add_middleware(HTTPSRedirectMiddleware)
 app.mount("/static", StaticFiles(directory=BASE / "static"), name="static")
 templates = Jinja2Templates(directory=BASE / "templates")
 admin_hash = password_hash.hash(settings.admin_password)
+
+
+@app.exception_handler(HTTPException)
+async def friendly_http_errors(request: Request, exc: HTTPException):
+    if exc.status_code == 401:
+        return RedirectResponse("/login", status_code=303)
+    return JSONResponse({"detail": exc.detail}, status_code=exc.status_code, headers=exc.headers)
 
 
 @app.middleware("http")

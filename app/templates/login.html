@@ -1,4 +1,3 @@
 {% extends "base.html" %}{% block title %}Acceso · DIF{% endblock %}{% block content %}
-<section class="card narrow"><p class="eyebrow">Acceso seguro</p><h1>Captura de credenciales</h1><p class="muted">Ingrese con la cuenta institucional configurada.</p>{% if error %}<div class="alert">{{ error }}</div>{% endif %}
+<section class="card narrow"><p class="eyebrow">Acceso seguro</p><h1>Captura Apoyos</h1><p class="muted">Ingrese con la cuenta institucional configurada.</p>{% if error %}<div class="alert">{{ error }}</div>{% endif %}
 <form method="post" action="/login" class="stack"><input type="hidden" name="csrf" value="{{ csrf }}"><label>Correo<input type="email" name="email" required autocomplete="username"></label><label>Contraseña<input type="password" name="password" required autocomplete="current-password"></label><button>Ingresar</button></form></section>{% endblock %}
-
