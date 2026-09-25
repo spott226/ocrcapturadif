@@ -223,37 +223,139 @@ def parse_front_regions(
     return result
 
 
-def _front_fields_from_layout(image: Image.Image) -> tuple[dict[str, str], str]:
+FRONT_FIELD_BOXES = {
+    "name": (.29, .20, .77, .46),
+    "address": (.29, .45, .78, .69),
+    "voter_key": (.29, .66, .78, .78),
+    "curp": (.29, .73, .69, .86),
+    "registration_year": (.64, .70, .94, .86),
+    "birth_date": (.29, .82, .57, .98),
+    "section": (.52, .82, .72, .98),
+    "valid_until": (.67, .81, .95, .98),
+    "sex_or_gender": (.79, .16, .99, .36),
+}
+
+
+def _front_field_montage(image: Image.Image) -> tuple[Image.Image, dict[str, tuple[int, int]]]:
+    width, height = image.size
+    montage_width = 1500
+    prepared = []
+    for field, box in FRONT_FIELD_BOXES.items():
+        region = image.crop((
+            int(width * box[0]), int(height * box[1]),
+            int(width * box[2]), int(height * box[3]),
+        ))
+        scale = min(4.0, 1250 / max(1, region.width))
+        region = region.resize(
+            (int(region.width * scale), int(region.height * scale)),
+            Image.Resampling.LANCZOS,
+        )
+        prepared.append((field, region))
+    montage_height = sum(region.height for _, region in prepared) + 70 * (len(prepared) + 1)
+    montage = Image.new("L", (montage_width, montage_height), 255)
+    bounds = {}
+    top = 70
+    for field, region in prepared:
+        left = (montage_width - region.width) // 2
+        montage.paste(region, (left, top))
+        bounds[field] = (top, top + region.height)
+        top += region.height + 70
+    return montage, bounds
+
+
+def _lines_from_words(words: list[tuple[int, int, int, str]]) -> str:
+    lines = []
+    for top, height, left, text in sorted(words):
+        tolerance = max(16, height)
+        if not lines or abs(top - lines[-1][0]) > tolerance:
+            lines.append([top, [(left, text)]])
+        else:
+            lines[-1][1].append((left, text))
+    return "\n".join(
+        " ".join(text for _, text in sorted(line_words))
+        for _, line_words in lines
+    )
+
+
+def _front_fields_from_regions(image: Image.Image) -> tuple[dict[str, str], str]:
+    montage, bounds = _front_field_montage(image)
     try:
         data = pytesseract.image_to_data(
-            image,
+            montage,
             lang="spa",
-            config="--oem 3 --psm 11",
+            config="--oem 3 --psm 6",
             timeout=18,
             output_type=pytesseract.Output.DICT,
         )
     except (RuntimeError, pytesseract.TesseractError):
         return asdict(Extracted()), ""
-    lines = {}
+    words = {field: [] for field in bounds}
     for index, text in enumerate(data.get("text", [])):
         text = str(text).strip()
         if not text:
             continue
-        key = (
-            int(data.get("block_num", [0] * len(data["text"]))[index]),
-            int(data.get("par_num", [0] * len(data["text"]))[index]),
-            int(data.get("line_num", [index] * len(data["text"]))[index]),
-        )
         top = int(data["top"][index])
         left = int(data["left"][index])
-        entry = lines.setdefault(key, {"top": top, "words": []})
-        entry["top"] = min(entry["top"], top)
-        entry["words"].append((left, text))
-    reconstructed = "\n".join(
-        " ".join(text for _, text in sorted(entry["words"]))
-        for entry in sorted(lines.values(), key=lambda item: item["top"])
+        height = int(data["height"][index])
+        center = top + height // 2
+        for field, (start, end) in bounds.items():
+            if start <= center <= end:
+                words[field].append((top, height, left, text))
+                break
+    texts = {field: _lines_from_words(items) for field, items in words.items()}
+    document_order = (
+        "name", "address", "voter_key", "curp", "registration_year",
+        "birth_date", "section", "valid_until", "sex_or_gender",
     )
-    return parse_front_document(reconstructed), reconstructed
+    reconstructed = "\n".join(texts[field] for field in document_order if texts[field])
+    parsed = parse_front_document(reconstructed)
+    # Las zonas pequeñas toleran etiquetas débiles usando el formato del dato.
+    if not parsed["curp"]:
+        parsed["curp"] = _curp_from_region(texts["curp"])
+    detail = parse_front_regions(
+        texts["address"], texts["curp"], texts["birth_date"],
+        texts["section"], texts["registration_year"], texts["valid_until"],
+    )
+    for key, value in detail.items():
+        if value and not parsed[key]:
+            parsed[key] = value
+    gender = re.search(r"\b(NB|H|M)\b", normalize(texts["sex_or_gender"]))
+    if gender and not parsed["sex_or_gender"]:
+        parsed["sex_or_gender"] = gender.group(1)
+    return parsed, reconstructed
+
+
+def parse_back_mrz(text: str) -> dict[str, str]:
+    result = parse_ine_text(text)
+    for line in normalize(text).splitlines():
+        compact = re.sub(r"[^A-Z0-9<]", "", line)
+        match = re.search(r"I[DO0]MEX([A-Z0-9]{8,15})<{1,3}([A-Z0-9]{12,14})", compact)
+        if not match:
+            continue
+        cic = match.group(1).translate(OCR_DIGITS)
+        ocr_code = match.group(2).translate(OCR_DIGITS)
+        if cic.isdigit():
+            result["cic"] = cic
+        if ocr_code.isdigit():
+            result["ocr_code"] = ocr_code
+        break
+    return result
+
+
+def _back_fields_from_mrz(image: Image.Image) -> tuple[dict[str, str], str]:
+    width, height = image.size
+    region = image.crop((0, int(height * .62), width, height))
+    if region.width < 2400:
+        scale = 2400 / region.width
+        region = region.resize(
+            (2400, int(region.height * scale)), Image.Resampling.LANCZOS,
+        )
+    text = _safe_ocr(
+        region,
+        "--oem 3 --psm 6 -c tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789<",
+        timeout=18,
+    )
+    return parse_back_mrz(text), text
 
 
 def parse_front_document(text: str) -> dict[str, str]:
@@ -421,10 +523,6 @@ def extract_image(data: bytes, side: str | None = None) -> tuple[dict[str, str],
             (shadowless, "--oem 3 --psm 11"),
             (threshold, "--oem 3 --psm 6"),
         )
-        if side == "back":
-            width, height = threshold.size
-            machine_lines = threshold.crop((0, int(height * .62), width, height))
-            passes += ((machine_lines, "--oem 3 --psm 6"),)
         merged = asdict(Extracted())
         raw_parts = []
         for prepared, config in passes:
@@ -436,10 +534,22 @@ def extract_image(data: bytes, side: str | None = None) -> tuple[dict[str, str],
                     merged[key] = value
 
         if side == "front":
-            region_fields, region_text = _front_fields_from_layout(clean)
+            region_fields, region_text = _front_fields_from_regions(shadowless)
             raw_parts.append(region_text)
             for key, value in region_fields.items():
-                if value and (key in {"name", "address"} or not merged[key]):
+                if not value:
+                    continue
+                if key in {"name", "address"}:
+                    if len(re.sub(r"\W", "", value)) >= len(re.sub(r"\W", "", merged[key])):
+                        merged[key] = value
+                else:
+                    merged[key] = value
+
+        if side == "back":
+            back_fields, back_text = _back_fields_from_mrz(shadowless)
+            raw_parts.append(back_text)
+            for key, value in back_fields.items():
+                if value and (key in {"cic", "ocr_code"} or not merged[key]):
                     merged[key] = value
 
         # La versión sin normalizar conserva detalles que a veces se pierden

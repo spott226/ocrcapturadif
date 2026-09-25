@@ -5,6 +5,7 @@ from PIL import Image, ImageDraw, ImageStat
 from app.ocr import (
     correct_document_perspective,
     extract_image,
+    parse_back_mrz,
     parse_front_document,
     parse_front_regions,
     parse_ine_text,
@@ -130,6 +131,14 @@ GOMEZ<VELAZQUEZ<<MARGARITA<<<<"""
     assert back_data["name"] == "GOMEZ VELAZQUEZ MARGARITA"
 
 
+def test_noisy_back_mrz_recovers_cic_and_ocr():
+    data = parse_back_mrz("""IDMEXI38252844I<<39O4O33366874
+GOMEZ<VELAZQUEZ<<MARGARITA<<<<""")
+
+    assert data["cic"] == "1382528441"
+    assert data["ocr_code"] == "3904033366874"
+
+
 def test_shadow_correction_balances_uneven_illumination():
     image = Image.new("L", (1800, 1000), 220)
     drawing = ImageDraw.Draw(image)
@@ -167,7 +176,7 @@ def test_front_detail_region_can_recover_section(monkeypatch):
         "app.ocr.pytesseract.image_to_data",
         lambda *_args, **_kwargs: {
             "text": ["NOMBRE", "MONTOYA", "SALMON", "CHRISTOPHER", "LENIEL", "DOMICILIO", "CALLE", "UNO", "COLONIA", "CENTRO", "AGUASCALIENTES", "AGS", "SECCIÓN", "4094"],
-            "top": [100, 150, 190, 230, 230, 300, 340, 340, 380, 380, 420, 420, 500, 540],
+            "top": [100, 150, 190, 230, 230, 600, 650, 650, 700, 700, 750, 750, 2700, 2780],
             "height": [30] * 14,
             "left": [100, 100, 100, 100, 430, 100, 100, 250, 100, 280, 100, 390, 100, 220],
             "block_num": [1] * 14,
