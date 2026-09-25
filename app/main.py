@@ -172,7 +172,7 @@ async def ocr(request: Request, front: UploadFile = File(...), back: UploadFile 
                 side, len(image_data), len(raw), sum(bool(value) for value in fields.values()),
             )
             for key, value in fields.items():
-                if value and not merged[key]:
+                if value and (not merged[key] or (side == "back" and key == "name")):
                     merged[key] = value
     except HTTPException:
         raise

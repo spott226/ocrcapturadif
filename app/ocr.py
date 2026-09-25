@@ -210,6 +210,7 @@ def parse_front_regions(
 
 
 FRONT_FIELD_BOXES = {
+    "name": (.29, .20, .77, .47),
     "address": (.30, .46, .76, .72),
     "curp": (.30, .71, .75, .84),
     "birth_date": (.30, .80, .57, .97),
@@ -288,6 +289,13 @@ def _front_fields_from_position(image: Image.Image) -> tuple[dict[str, str], str
         texts["address"], texts["curp"], texts["birth_date"],
         texts["section"], texts["registration_year"], texts["valid_until"],
     )
+    name_lines = []
+    for line in normalize(texts["name"]).splitlines():
+        line = re.sub(r"^N[O0]M[B8]RE\s*", "", line).strip(" :-")
+        if line and len(re.findall(r"[A-ZÁÉÍÓÚÑ]", line)) >= 2:
+            name_lines.append(line)
+    if name_lines:
+        parsed["name"] = " ".join(name_lines)[:180]
     gender_text = normalize(texts["sex_or_gender"])
     gender = re.search(r"(?:SEXO|G[ÉE]NERO)\s*[:.]?\s*(NB|H|M)\b", gender_text)
     if not gender:
@@ -405,7 +413,7 @@ def extract_image(data: bytes, side: str | None = None) -> tuple[dict[str, str],
             region_fields, region_text = _front_fields_from_position(clean)
             raw_parts.append(region_text)
             for key, value in region_fields.items():
-                if value and not merged[key]:
+                if value and (key == "name" or not merged[key]):
                     merged[key] = value
 
         # La versión sin normalizar conserva detalles que a veces se pierden

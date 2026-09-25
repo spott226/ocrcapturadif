@@ -144,8 +144,10 @@ def test_front_detail_region_can_recover_section(monkeypatch):
     monkeypatch.setattr(
         "app.ocr.pytesseract.image_to_data",
         lambda *_args, **_kwargs: {
-            "text": ["SECCIÓN", "4094"],
-            "top": [1500, 1540], "height": [30, 36], "left": [100, 220],
+            "text": ["NOMBRE", "MONTOYA", "SALMON", "CHRISTOPHER", "LENIEL", "SECCIÓN", "4094"],
+            "top": [100, 150, 190, 230, 230, 2050, 2090],
+            "height": [30, 34, 34, 34, 34, 30, 36],
+            "left": [100, 100, 100, 100, 430, 100, 220],
         },
     )
     image = Image.new("RGB", (1600, 1000), "white")
@@ -154,6 +156,7 @@ def test_front_detail_region_can_recover_section(monkeypatch):
 
     data, _raw = extract_image(stream.getvalue(), side="front")
 
+    assert data["name"] == "MONTOYA SALMON CHRISTOPHER LENIEL"
     assert data["section"] == "4094"
 
 
