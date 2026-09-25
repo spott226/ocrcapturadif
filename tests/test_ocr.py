@@ -2,7 +2,14 @@ from io import BytesIO
 
 from PIL import Image, ImageDraw, ImageStat
 
-from app.ocr import extract_image, parse_front_document, parse_front_regions, parse_ine_text, prepare_ocr_images
+from app.ocr import (
+    correct_document_perspective,
+    extract_image,
+    parse_front_document,
+    parse_front_regions,
+    parse_ine_text,
+    prepare_ocr_images,
+)
 
 
 def test_parse_fictitious_ine_text():
@@ -133,6 +140,21 @@ def test_shadow_correction_balances_uneven_illumination():
     light_side = ImageStat.Stat(shadowless.crop((1100, 150, 1650, 850))).mean[0]
 
     assert abs(dark_side - light_side) < 15
+
+
+def test_perspective_correction_rectifies_a_complete_card():
+    image = Image.new("RGB", (1800, 1300), "#222222")
+    drawing = ImageDraw.Draw(image)
+    drawing.polygon(
+        [(180, 250), (1610, 120), (1680, 1050), (260, 1160)],
+        fill="white", outline="black", width=12,
+    )
+    drawing.line((450, 500, 1400, 420), fill="black", width=20)
+
+    corrected = correct_document_perspective(image)
+
+    assert corrected.width >= 1600
+    assert abs(corrected.width / corrected.height - 1.586) < .01
 
 
 def test_front_detail_region_can_recover_section(monkeypatch):

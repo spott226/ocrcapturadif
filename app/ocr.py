@@ -2,7 +2,9 @@ import re
 from dataclasses import dataclass, asdict
 from datetime import datetime
 from io import BytesIO
-from PIL import Image, ImageChops, ImageEnhance, ImageFilter, ImageOps, ImageStat
+import cv2
+import numpy as np
+from PIL import Image, ImageEnhance, ImageFilter, ImageOps
 import pytesseract
 
 
@@ -303,8 +305,78 @@ def _safe_ocr(image: Image.Image, config: str, timeout: int = 15) -> str:
         return ""
 
 
+def _ordered_corners(points: np.ndarray) -> np.ndarray:
+    points = points.reshape(4, 2).astype("float32")
+    ordered = np.zeros((4, 2), dtype="float32")
+    totals = points.sum(axis=1)
+    differences = np.diff(points, axis=1).ravel()
+    ordered[0] = points[np.argmin(totals)]
+    ordered[2] = points[np.argmax(totals)]
+    ordered[1] = points[np.argmin(differences)]
+    ordered[3] = points[np.argmax(differences)]
+    return ordered
+
+
+def correct_document_perspective(image: Image.Image) -> Image.Image:
+    """Endereza una credencial completa; si no hay borde confiable conserva la foto."""
+    source = ImageOps.exif_transpose(image).convert("RGB")
+    rgb = np.asarray(source)
+    height, width = rgb.shape[:2]
+    detection_scale = min(1.0, 1400 / max(width, height))
+    detection = cv2.resize(
+        rgb, None, fx=detection_scale, fy=detection_scale,
+        interpolation=cv2.INTER_AREA,
+    )
+    gray = cv2.cvtColor(detection, cv2.COLOR_RGB2GRAY)
+    gray = cv2.GaussianBlur(gray, (5, 5), 0)
+    edges = cv2.Canny(gray, 45, 135)
+    edges = cv2.morphologyEx(
+        edges, cv2.MORPH_CLOSE, np.ones((7, 7), np.uint8), iterations=2,
+    )
+    contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    image_area = detection.shape[0] * detection.shape[1]
+    card = None
+    for contour in sorted(contours, key=cv2.contourArea, reverse=True)[:12]:
+        area = cv2.contourArea(contour)
+        if area < image_area * .38:
+            break
+        perimeter = cv2.arcLength(contour, True)
+        polygon = cv2.approxPolyDP(contour, .025 * perimeter, True)
+        if len(polygon) == 4 and cv2.isContourConvex(polygon):
+            card = polygon.reshape(4, 2) / detection_scale
+            break
+    if card is None:
+        return source
+
+    corners = _ordered_corners(card)
+    top_left, top_right, bottom_right, bottom_left = corners
+    measured_width = max(
+        np.linalg.norm(bottom_right - bottom_left),
+        np.linalg.norm(top_right - top_left),
+    )
+    measured_height = max(
+        np.linalg.norm(top_right - bottom_right),
+        np.linalg.norm(top_left - bottom_left),
+    )
+    ratio = max(measured_width, measured_height) / max(1, min(measured_width, measured_height))
+    if not 1.30 <= ratio <= 1.90:
+        return source
+    if measured_height > measured_width:
+        corners = np.roll(corners, -1, axis=0)
+
+    output_width = min(2400, max(1600, int(max(measured_width, measured_height))))
+    output_height = round(output_width / 1.586)
+    destination = np.array([
+        [0, 0], [output_width - 1, 0],
+        [output_width - 1, output_height - 1], [0, output_height - 1],
+    ], dtype="float32")
+    transform = cv2.getPerspectiveTransform(corners, destination)
+    warped = cv2.warpPerspective(rgb, transform, (output_width, output_height))
+    return Image.fromarray(warped)
+
+
 def prepare_ocr_images(image: Image.Image) -> tuple[Image.Image, Image.Image, Image.Image]:
-    image = ImageOps.exif_transpose(image).convert("L")
+    image = correct_document_perspective(image).convert("L")
     longest_side = max(image.size)
     if longest_side < 1800:
         factor = 1800 / longest_side
@@ -323,17 +395,22 @@ def prepare_ocr_images(image: Image.Image) -> tuple[Image.Image, Image.Image, Im
     clean = ImageEnhance.Contrast(clean).enhance(1.25)
     clean = clean.filter(ImageFilter.UnsharpMask(radius=1.3, percent=160, threshold=3))
 
-    # Estima la iluminación de fondo y la resta de la imagen. Esto empareja
-    # zonas claras y oscuras sin guardar ni enviar una copia procesada.
-    blur_radius = max(18, min(clean.size) // 34)
-    illumination = clean.filter(ImageFilter.GaussianBlur(radius=blur_radius))
-    shadowless = ImageOps.invert(ImageChops.difference(clean, illumination))
-    shadowless = ImageOps.autocontrast(shadowless, cutoff=1)
-    shadowless = shadowless.filter(ImageFilter.UnsharpMask(radius=1.0, percent=150, threshold=2))
-
-    average = ImageStat.Stat(shadowless).mean[0]
-    threshold_level = max(145, min(215, int(average * 0.91)))
-    threshold = shadowless.point(lambda pixel: 255 if pixel > threshold_level else 0)
+    # Divide cada píxel entre una estimación suave de la iluminación. OpenCV
+    # compensa sombras y CLAHE recupera letras sin quemar todo el plástico.
+    gray = np.asarray(image)
+    sigma = max(18, min(clean.size) // 34)
+    illumination = cv2.GaussianBlur(gray, (0, 0), sigmaX=sigma, sigmaY=sigma)
+    normalized = cv2.divide(gray, illumination, scale=245)
+    normalized = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(10, 10)).apply(normalized)
+    normalized = cv2.GaussianBlur(normalized, (3, 3), 0)
+    shadowless = Image.fromarray(normalized).filter(
+        ImageFilter.UnsharpMask(radius=1.0, percent=140, threshold=2),
+    )
+    threshold_array = cv2.adaptiveThreshold(
+        normalized, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+        cv2.THRESH_BINARY, 41, 13,
+    )
+    threshold = Image.fromarray(threshold_array)
     return clean, shadowless, threshold
 
 
