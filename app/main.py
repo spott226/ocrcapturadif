@@ -2,12 +2,12 @@ import re
 from contextlib import asynccontextmanager
 from io import BytesIO
 from pathlib import Path
-from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from openpyxl import Workbook
-from sqlalchemy import inspect, or_, select, text
+from sqlalchemy import func, inspect, or_, select, text
 from sqlalchemy.orm import Session
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.middleware.httpsredirect import HTTPSRedirectMiddleware
@@ -125,10 +125,19 @@ def logout(request: Request, csrf: str = Form(...)):
 
 
 @app.get("/", response_class=HTMLResponse)
-def home(request: Request, db: Session = Depends(get_db)):
+def home(request: Request, pagina: int = Query(1, ge=1), db: Session = Depends(get_db)):
     require_user(request)
-    people = db.scalars(select(Person).order_by(Person.created_at.desc()).limit(100)).all()
-    return page(request, "index.html", people=people)
+    page_size = 10
+    total = db.scalar(select(func.count(Person.id))) or 0
+    total_pages = max(1, (total + page_size - 1) // page_size)
+    current_page = min(pagina, total_pages)
+    people = db.scalars(
+        select(Person).order_by(Person.created_at.desc()).offset((current_page - 1) * page_size).limit(page_size)
+    ).all()
+    return page(
+        request, "index.html", people=people, total=total,
+        current_page=current_page, total_pages=total_pages,
+    )
 
 
 async def read_upload(upload: UploadFile) -> bytes:

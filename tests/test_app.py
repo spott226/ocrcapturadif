@@ -42,6 +42,12 @@ def test_login_save_and_export_fictitious_record():
             "ocr_code": "1234567890123", "valid_until": "2036", "csrf": csrf,
         })
         assert saved.status_code == 200
+        assert "Fecha de nacimiento" in saved.text
+        assert "Domicilio" in saved.text
+        assert "Sexo / género" in saved.text
+        assert "Año de emisión" in saved.text
+        assert "OCR del reverso" in saved.text
+        assert "PERSONA FICTICIA PRUEBA" in saved.text
         exported = client.get("/exportar.xlsx")
         assert exported.status_code == 200
         assert exported.content[:2] == b"PK"
@@ -54,3 +60,40 @@ def test_login_save_and_export_fictitious_record():
         assert deleted.status_code == 303
         with SessionLocal() as db:
             assert db.get(Person, person_id) is None
+
+
+def test_records_are_paginated_ten_per_page():
+    with SessionLocal() as db:
+        db.execute(delete(Person))
+        db.add_all([
+            Person(
+                name=f"PERSONA FICTICIA {number:02d}",
+                curp=f"FICTICIO{number:010d}",
+                created_by="admin@example.test",
+            )
+            for number in range(1, 12)
+        ])
+        db.commit()
+
+    with TestClient(app) as client:
+        login_page = client.get("/login")
+        csrf = login_page.text.split('name="csrf" value="', 1)[1].split('"', 1)[0]
+        client.post("/login", data={
+            "email": "admin@example.test",
+            "password": "a-secure-test-password",
+            "csrf": csrf,
+        })
+
+        first_page = client.get("/")
+        assert "11 en total · Página 1 de 2" in first_page.text
+        assert first_page.text.count('class="record-card"') == 10
+        assert "Siguiente" in first_page.text
+
+        second_page = client.get("/?pagina=2")
+        assert "11 en total · Página 2 de 2" in second_page.text
+        assert second_page.text.count('class="record-card"') == 1
+        assert "Anterior" in second_page.text
+
+    with SessionLocal() as db:
+        db.execute(delete(Person))
+        db.commit()
