@@ -327,7 +327,7 @@ def _clean_single_line(text: str, letters_only: bool) -> str:
 
 
 def _ocr_line_with_confidence(
-    image: Image.Image, psm: int, minimum_confidence: float = 12,
+    image: Image.Image, psm: int, minimum_confidence: float = 0,
 ) -> tuple[str, float]:
     try:
         data = pytesseract.image_to_data(
