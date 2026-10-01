@@ -23,6 +23,8 @@ BASE = Path(__file__).resolve().parent
 logger = logging.getLogger("uvicorn.error")
 
 EXTRA_COLUMNS = {
+    "phone": "VARCHAR(15) NOT NULL DEFAULT ''",
+    "leader": "VARCHAR(180) NOT NULL DEFAULT ''",
     "birth_date": "VARCHAR(20) NOT NULL DEFAULT ''",
     "sex_or_gender": "VARCHAR(20) NOT NULL DEFAULT ''",
     "state_code": "VARCHAR(20) NOT NULL DEFAULT ''",
@@ -157,11 +159,7 @@ async def read_upload(upload: UploadFile) -> bytes:
 async def ocr(request: Request, front: UploadFile = File(...), back: UploadFile | None = File(None), csrf: str = Form(...)):
     require_user(request)
     require_csrf(request, csrf)
-    merged = {key: "" for key in (
-        "name", "address", "curp", "voter_key", "birth_date", "sex_or_gender",
-        "state_code", "municipality_code", "section", "locality_code",
-        "registration_year", "issue_year", "cic", "ocr_code", "valid_until",
-    )}
+    merged = {"name": "", "address": "", "curp": "", "phone": "", "leader": ""}
     try:
         uploads = [("front", front)] + ([("back", back)] if back and back.filename else [])
         for side, upload in uploads:
@@ -172,7 +170,7 @@ async def ocr(request: Request, front: UploadFile = File(...), back: UploadFile 
                 side, len(image_data), len(raw), sum(bool(value) for value in fields.values()),
             )
             for key, value in fields.items():
-                if value and (not merged[key] or (side == "back" and key == "name")):
+                if key in merged and value and not merged[key]:
                     merged[key] = value
     except HTTPException:
         raise
@@ -195,35 +193,27 @@ async def ocr(request: Request, front: UploadFile = File(...), back: UploadFile 
 @app.post("/registros", response_class=HTMLResponse)
 def save(
     request: Request, name: str = Form(...), address: str = Form(""),
-    curp: str = Form(""), voter_key: str = Form(""), birth_date: str = Form(""),
-    sex_or_gender: str = Form(""), state_code: str = Form(""),
-    municipality_code: str = Form(""), section: str = Form(""),
-    locality_code: str = Form(""), registration_year: str = Form(""),
-    issue_year: str = Form(""), cic: str = Form(""), ocr_code: str = Form(""),
-    valid_until: str = Form(""), csrf: str = Form(...), db: Session = Depends(get_db),
+    curp: str = Form(""), phone: str = Form(""), leader: str = Form(""),
+    csrf: str = Form(...), db: Session = Depends(get_db),
 ):
     user = require_user(request)
     require_csrf(request, csrf)
-    name, curp, voter_key = name.strip().upper(), curp.strip().upper(), voter_key.strip().upper()
-    cic, ocr_code = cic.strip().upper(), ocr_code.strip().upper()
+    name, curp = name.strip().upper(), curp.strip().upper()
+    address, leader = address.strip().upper(), leader.strip().upper()
+    phone = re.sub(r"\D", "", phone)
     if curp and not re.fullmatch(r"[A-Z]{4}\d{6}[HM][A-Z]{5}[A-Z0-9]\d", curp):
         return page(request, "review.html", data=locals(), error="La CURP no tiene un formato válido.")
+    if phone and len(phone) != 10:
+        return page(request, "review.html", data=locals(), error="El teléfono debe tener 10 dígitos.")
     conditions = []
     if curp: conditions.append(Person.curp == curp)
-    if voter_key: conditions.append(Person.voter_key == voter_key)
-    if cic: conditions.append(Person.cic == cic)
-    if ocr_code: conditions.append(Person.ocr_code == ocr_code)
+    if phone: conditions.append(Person.phone == phone)
     duplicates = db.scalars(select(Person).where(or_(*conditions))) .all() if conditions else []
     if duplicates:
         return page(request, "review.html", data=locals(), duplicates=duplicates, error="Posible duplicado: revise antes de continuar.")
     person = Person(
-        name=name[:180], address=address.strip().upper()[:500], curp=curp[:18],
-        voter_key=voter_key[:24], birth_date=birth_date.strip()[:20],
-        sex_or_gender=sex_or_gender.strip().upper()[:20], state_code=state_code.strip().upper()[:20],
-        municipality_code=municipality_code.strip().upper()[:20], section=section.strip()[:10],
-        locality_code=locality_code.strip().upper()[:20], registration_year=registration_year.strip()[:20],
-        issue_year=issue_year.strip()[:10], cic=cic[:20], ocr_code=ocr_code[:20],
-        valid_until=valid_until.strip()[:20], created_by=user,
+        name=name[:180], address=address[:500], curp=curp[:18],
+        phone=phone[:15], leader=leader[:180], created_by=user,
     )
     db.add(person)
     db.commit()
@@ -251,9 +241,9 @@ def export(request: Request, db: Session = Depends(get_db)):
     wb = Workbook()
     ws = wb.active
     ws.title = "Registros DIF"
-    ws.append(["ID", "Nombre", "Domicilio", "CURP", "Clave de elector", "Fecha de nacimiento", "Sexo/Género", "Sección", "Año de registro", "CIC", "OCR", "Vigencia", "Capturó", "Fecha de captura"])
+    ws.append(["ID", "Nombre completo", "CURP", "Dirección", "Número de teléfono", "Líder", "Capturó", "Fecha de captura"])
     for row in rows:
-        ws.append([row.id, row.name, row.address, row.curp, row.voter_key, row.birth_date, row.sex_or_gender, row.section, row.registration_year, row.cic, row.ocr_code, row.valid_until, row.created_by, row.created_at.replace(tzinfo=None)])
+        ws.append([row.id, row.name, row.curp, row.address, row.phone, row.leader, row.created_by, row.created_at.replace(tzinfo=None)])
     ws.freeze_panes = "A2"
     for column in ws.columns:
         ws.column_dimensions[column[0].column_letter].width = min(max(len(str(c.value or "")) for c in column) + 2, 55)

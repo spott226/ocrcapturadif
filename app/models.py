@@ -10,6 +10,8 @@ class Person(Base):
     name: Mapped[str] = mapped_column(String(180), index=True)
     address: Mapped[str] = mapped_column(Text, default="")
     curp: Mapped[str] = mapped_column(String(18), default="", index=True)
+    phone: Mapped[str] = mapped_column(String(15), default="", index=True)
+    leader: Mapped[str] = mapped_column(String(180), default="")
     voter_key: Mapped[str] = mapped_column(String(24), default="", index=True)
     birth_date: Mapped[str] = mapped_column(String(20), default="")
     sex_or_gender: Mapped[str] = mapped_column(String(20), default="")

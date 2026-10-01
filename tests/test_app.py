@@ -37,17 +37,17 @@ def test_login_save_and_export_fictitious_record():
         csrf = response.text.split('name="csrf" value="', 1)[1].split('"', 1)[0]
         saved = client.post("/registros", data={
             "name": "PERSONA FICTICIA PRUEBA", "address": "DOMICILIO FICTICIO",
-            "curp": "PULA900101MDFRPN09", "voter_key": "PRLBAN90010109M100",
-            "birth_date": "01/01/1990", "section": "1234", "cic": "123456789",
-            "ocr_code": "1234567890123", "valid_until": "2036", "csrf": csrf,
+            "curp": "PULA900101MDFRPN09", "phone": "4491234567",
+            "leader": "LIDER FICTICIO", "csrf": csrf,
         })
         assert saved.status_code == 200
-        assert "Fecha de nacimiento" in saved.text
-        assert "Domicilio" in saved.text
-        assert "Sexo / género" in saved.text
-        assert "Año de emisión" not in saved.text
-        assert "OCR del reverso" in saved.text
+        assert "Número de teléfono" in saved.text
+        assert "Dirección" in saved.text
+        assert "Líder" in saved.text
+        assert "OCR del reverso" not in saved.text
         assert "PERSONA FICTICIA PRUEBA" in saved.text
+        assert "4491234567" in saved.text
+        assert "LIDER FICTICIO" in saved.text
         exported = client.get("/exportar.xlsx")
         assert exported.status_code == 200
         assert exported.content[:2] == b"PK"
@@ -60,6 +60,21 @@ def test_login_save_and_export_fictitious_record():
         assert deleted.status_code == 303
         with SessionLocal() as db:
             assert db.get(Person, person_id) is None
+
+
+def test_rejects_invalid_phone_length():
+    with TestClient(app) as client:
+        login_page = client.get("/login")
+        csrf = login_page.text.split('name="csrf" value="', 1)[1].split('"', 1)[0]
+        response = client.post("/login", data={
+            "email": "admin@example.test", "password": "a-secure-test-password", "csrf": csrf,
+        })
+        csrf = response.text.split('name="csrf" value="', 1)[1].split('"', 1)[0]
+        rejected = client.post("/registros", data={
+            "name": "PERSONA FICTICIA", "phone": "449123", "csrf": csrf,
+        })
+        assert rejected.status_code == 200
+        assert "El teléfono debe tener 10 dígitos" in rejected.text
 
 
 def test_records_are_paginated_ten_per_page():

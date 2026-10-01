@@ -1,12 +1,12 @@
 # DIF · Captura Apoyos (MVP)
 
-Aplicación web móvil/escritorio para capturar frente y reverso de una INE, proponer datos con Tesseract OCR, revisarlos manualmente, detectar coincidencias y exportar registros a Excel.
+Aplicación web móvil/escritorio para fotografiar el frente de una INE, proponer nombre completo, CURP y dirección con Tesseract OCR, agregar teléfono y líder manualmente, detectar coincidencias y exportar registros a Excel.
 
 ## Alcance y decisiones de privacidad
 
 - Las imágenes se leen en memoria y **no se guardan** en disco ni en la base de datos.
 - El texto OCR crudo tampoco se persiste. Solo se guardan los campos confirmados por el operador.
-- CURP y clave de elector activan la alerta de posible duplicado.
+- CURP y número de teléfono activan la alerta de posible duplicado.
 - Las imágenes admitidas son JPG, PNG y WEBP, con límite configurable (8 MB por defecto).
 - Las cookies de sesión son `HttpOnly` y `SameSite=Lax`; en Railway debe activarse `COOKIE_SECURE=true`.
 - La exportación requiere una sesión autenticada y se entrega con `Cache-Control: no-store`.

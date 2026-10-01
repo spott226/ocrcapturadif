@@ -1,0 +1,4 @@
+.upload-grid.single-capture {
+  grid-template-columns: minmax(0, 650px);
+  justify-content: center;
+}
