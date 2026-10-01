@@ -38,7 +38,7 @@ def sanitize_extracted(fields: dict[str, str]) -> dict[str, str]:
     )[0]
     name = re.sub(r"[/|]+", " ", name)
     name = re.sub(r"[^A-ZÁÉÍÓÚÜÑ' -]", "", name)
-    name = " ".join(word for word in name.split() if word != "NOMBRE")
+    name = " ".join(word for word in name.split() if word != "NOMBRE" and len(word) > 1)
     clean["name"] = name[:180] if len(name.replace(" ", "")) >= 4 else ""
 
     address_lines = []
@@ -321,9 +321,11 @@ def _lines_after_label(text: str, label: str, limit: int) -> list[str]:
     return selected
 
 
-def _front_fields_from_regions(image: Image.Image) -> tuple[dict[str, str], str]:
+def _front_fields_from_regions(
+    image: Image.Image, config: str = "--oem 3 --psm 6",
+) -> tuple[dict[str, str], str]:
     texts = {
-        field: _safe_ocr(_front_crop(image, field), "--oem 3 --psm 6", timeout=18)
+        field: _safe_ocr(_front_crop(image, field), config, timeout=18)
         for field in ("name", "address", "curp")
     }
     result = asdict(Extracted())
@@ -553,8 +555,15 @@ def extract_image(data: bytes, side: str | None = None) -> tuple[dict[str, str],
             # En archivos reenviados, la versión normal suele conservar mejor
             # las letras; en fotos con sombra gana la versión compensada.
             # Se aceptan únicamente campos válidos y se conserva el más completo.
-            for regional_image in (clean, shadowless):
-                region_fields, region_text = _front_fields_from_regions(regional_image)
+            regional_versions = (
+                (clean, "--oem 3 --psm 6"),
+                (shadowless, "--oem 3 --psm 11"),
+                (threshold, "--oem 3 --psm 6"),
+            )
+            for regional_image, regional_config in regional_versions:
+                region_fields, region_text = _front_fields_from_regions(
+                    regional_image, regional_config,
+                )
                 region_fields = sanitize_extracted(region_fields)
                 raw_parts.append(region_text)
                 for key, value in region_fields.items():
