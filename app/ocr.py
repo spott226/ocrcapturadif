@@ -386,6 +386,23 @@ def _choose_consensus(candidates: list[tuple[float, str, int]]) -> str:
     return max(ranked, key=lambda item: item[0])[1]
 
 
+def _transfer_word_breaks(reference: str, alternative: str) -> str:
+    words = reference.split()
+    compact_reference = "".join(words)
+    compact_alternative = re.sub(r"\s", "", alternative)
+    if (
+        len(compact_reference) != len(compact_alternative)
+        or SequenceMatcher(None, compact_reference, compact_alternative).ratio() < .72
+    ):
+        return reference
+    rebuilt = []
+    offset = 0
+    for word in words:
+        rebuilt.append(compact_alternative[offset:offset + len(word)])
+        offset += len(word)
+    return " ".join(rebuilt)
+
+
 def _best_line(
     images: tuple[Image.Image, ...],
     box: tuple[float, float, float, float],
@@ -393,6 +410,7 @@ def _best_line(
 ) -> tuple[str, list[str]]:
     readings = []
     candidates = []
+    restricted_candidates = []
     order = 0
     for source in images:
         base_crop = _front_line_crop(source, box)
@@ -420,8 +438,12 @@ def _best_line(
         minimum = 3 if letters_only else 4
         if len(re.sub(r"\W", "", restricted_candidate)) >= minimum:
             candidates.append((55.0, restricted_candidate, order))
+            restricted_candidates.append((55.0, restricted_candidate, order))
         order += 1
     best = _choose_consensus(candidates)
+    restricted_best = _choose_consensus(restricted_candidates)
+    if restricted_best:
+        best = _transfer_word_breaks(best, restricted_best)
     return best, readings
 
 

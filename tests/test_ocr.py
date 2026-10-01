@@ -4,6 +4,7 @@ from PIL import Image, ImageDraw, ImageStat
 
 from app.ocr import (
     _choose_consensus,
+    _transfer_word_breaks,
     correct_document_perspective,
     extract_image,
     parse_back_mrz,
@@ -32,6 +33,15 @@ def test_address_sanitizer_removes_edge_noise_and_common_place_typo():
     })
 
     assert data["address"] == "AGUASCALIENTES AGS"
+
+
+def test_restricted_reading_corrects_characters_without_losing_spaces():
+    assert _transfer_word_breaks(
+        "CHRISTOPHER EENIEE", "CHRISTOPHERLENIEL",
+    ) == "CHRISTOPHER LENIEL"
+    assert _transfer_word_breaks(
+        "C BENJAMIN DE LA MORA 149", "CBENJAMINDELAMORA112",
+    ) == "C BENJAMIN DE LA MORA 112"
 
 
 def test_parse_fictitious_ine_text():
