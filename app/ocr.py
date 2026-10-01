@@ -301,9 +301,16 @@ def _front_line_crop(image: Image.Image, box: tuple[float, float, float, float])
             (int(region.width * scale), int(region.height * scale)),
             Image.Resampling.LANCZOS,
         )
-    return ImageOps.autocontrast(region, cutoff=1).filter(
-        ImageFilter.UnsharpMask(radius=1.0, percent=130, threshold=2),
+    return region.filter(ImageFilter.UnsharpMask(radius=1.0, percent=110, threshold=2))
+
+
+def _otsu_line(image: Image.Image) -> Image.Image:
+    gray = np.asarray(image.convert("L"))
+    softened = cv2.GaussianBlur(gray, (3, 3), 0)
+    _level, binary = cv2.threshold(
+        softened, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU,
     )
+    return Image.fromarray(binary)
 
 
 def _clean_single_line(text: str, letters_only: bool) -> str:
@@ -326,8 +333,9 @@ def _best_line(
     candidates = []
     # Prioriza la foto normal. PSM 13 es respaldo para renglones que PSM 7
     # omite; la imagen binaria se consulta sólo después de ambas lecturas.
-    for image in images:
-        crop = _front_line_crop(image, box)
+    base_crop = _front_line_crop(images[0], box)
+    variants = (_otsu_line(base_crop), base_crop)
+    for crop in variants:
         for psm in (7, 13):
             reading = _safe_ocr(crop, f"--oem 3 --psm {psm}", timeout=12)
             readings.append(reading)
