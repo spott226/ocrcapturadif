@@ -324,6 +324,35 @@ def _clean_single_line(text: str, letters_only: bool) -> str:
     return line
 
 
+def _ocr_line_with_confidence(image: Image.Image, psm: int) -> tuple[str, float]:
+    try:
+        data = pytesseract.image_to_data(
+            image,
+            lang="spa",
+            config=f"--oem 3 --psm {psm}",
+            timeout=12,
+            output_type=pytesseract.Output.DICT,
+        )
+    except (RuntimeError, pytesseract.TesseractError):
+        return "", 0.0
+    accepted = []
+    weighted_confidence = 0.0
+    weight = 0
+    for raw_text, raw_confidence in zip(data.get("text", []), data.get("conf", [])):
+        token = str(raw_text).strip()
+        try:
+            confidence = float(raw_confidence)
+        except (TypeError, ValueError):
+            confidence = -1
+        if not token or confidence < 30:
+            continue
+        token_weight = max(1, len(re.sub(r"\W", "", token)))
+        accepted.append(token)
+        weighted_confidence += confidence * token_weight
+        weight += token_weight
+    return " ".join(accepted), weighted_confidence / max(1, weight)
+
+
 def _best_line(
     images: tuple[Image.Image, ...],
     box: tuple[float, float, float, float],
@@ -331,20 +360,21 @@ def _best_line(
 ) -> tuple[str, list[str]]:
     readings = []
     candidates = []
-    # Prioriza la foto normal. PSM 13 es respaldo para renglones que PSM 7
-    # omite; la imagen binaria se consulta sólo después de ambas lecturas.
     base_crop = _front_line_crop(images[0], box)
     variants = (_otsu_line(base_crop), base_crop)
+    order = 0
     for crop in variants:
         for psm in (7, 13):
-            reading = _safe_ocr(crop, f"--oem 3 --psm {psm}", timeout=12)
+            reading, confidence = _ocr_line_with_confidence(crop, psm)
             readings.append(reading)
             candidate = _clean_single_line(reading, letters_only)
-            candidates.append(candidate)
             minimum = 3 if letters_only else 4
             if len(re.sub(r"\W", "", candidate)) >= minimum:
-                return candidate, readings
-    best = max(candidates, key=lambda value: len(re.sub(r"\W", "", value)), default="")
+                # Un pequeño desempate conserva la preferencia por Otsu/PSM 7,
+                # pero la confianza reconocida domina la decisión.
+                candidates.append((confidence - order * .35, candidate))
+            order += 1
+    best = max(candidates, key=lambda item: item[0], default=(0.0, ""))[1]
     return best, readings
 
 
