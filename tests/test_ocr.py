@@ -3,6 +3,7 @@ from io import BytesIO
 from PIL import Image, ImageDraw, ImageStat
 
 from app.ocr import (
+    _choose_consensus,
     correct_document_perspective,
     extract_image,
     parse_back_mrz,
@@ -12,6 +13,17 @@ from app.ocr import (
     prepare_ocr_images,
     sanitize_extracted,
 )
+
+
+def test_consensus_prefers_repeated_clean_reading_over_long_noise():
+    candidates = [
+        (92.0, "SALMON ES", 0),
+        (84.0, "SALMON", 1),
+        (82.0, "SALMON", 2),
+        (73.0, "SALMONEE", 3),
+    ]
+
+    assert _choose_consensus(candidates) == "SALMON"
 
 
 def test_parse_fictitious_ine_text():

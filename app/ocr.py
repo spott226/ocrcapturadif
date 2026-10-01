@@ -1,6 +1,7 @@
 import re
 from dataclasses import dataclass, asdict
 from datetime import datetime
+from difflib import SequenceMatcher
 from io import BytesIO
 import cv2
 import numpy as np
@@ -277,14 +278,14 @@ def parse_front_regions(
 
 
 FRONT_NAME_LINES = (
-    (.31, .322, .68, .368),
-    (.31, .368, .68, .410),
-    (.31, .410, .68, .455),
+    (.31, .322, .62, .368),
+    (.31, .368, .62, .410),
+    (.31, .410, .62, .455),
 )
 FRONT_ADDRESS_LINES = (
-    (.31, .560, .72, .603),
-    (.31, .605, .72, .646),
-    (.31, .648, .72, .686),
+    (.31, .560, .66, .603),
+    (.31, .605, .66, .646),
+    (.31, .648, .66, .686),
 )
 FRONT_CURP_LINE = (.31, .79, .68, .86)
 
@@ -338,7 +339,11 @@ def _ocr_line_with_confidence(image: Image.Image, psm: int) -> tuple[str, float]
     accepted = []
     weighted_confidence = 0.0
     weight = 0
-    for raw_text, raw_confidence in zip(data.get("text", []), data.get("conf", [])):
+    previous_right = None
+    for raw_text, raw_confidence, raw_left, raw_width in zip(
+        data.get("text", []), data.get("conf", []),
+        data.get("left", []), data.get("width", []),
+    ):
         token = str(raw_text).strip()
         try:
             confidence = float(raw_confidence)
@@ -346,11 +351,36 @@ def _ocr_line_with_confidence(image: Image.Image, psm: int) -> tuple[str, float]
             confidence = -1
         if not token or confidence < 30:
             continue
+        left = int(raw_left)
+        token_width = int(raw_width)
+        # En la INE cada renglón es continuo. Un salto grande suele ser texto
+        # de seguridad o parte de otro campo, no continuación del dato.
+        if previous_right is not None and left - previous_right > image.width * .10:
+            break
         token_weight = max(1, len(re.sub(r"\W", "", token)))
         accepted.append(token)
         weighted_confidence += confidence * token_weight
         weight += token_weight
+        previous_right = left + token_width
     return " ".join(accepted), weighted_confidence / max(1, weight)
+
+
+def _choose_consensus(candidates: list[tuple[float, str, int]]) -> str:
+    if not candidates:
+        return ""
+    unique: dict[str, tuple[float, int]] = {}
+    for confidence, text, order in candidates:
+        current = unique.get(text)
+        if current is None or confidence > current[0]:
+            unique[text] = (confidence, order)
+    ranked = []
+    texts = [text for _confidence, text, _order in candidates]
+    for text, (confidence, order) in unique.items():
+        agreement = sum(
+            SequenceMatcher(None, text, other).ratio() for other in texts
+        ) / len(texts)
+        ranked.append((agreement * 65 + confidence * .35 - order * .08, text))
+    return max(ranked, key=lambda item: item[0])[1]
 
 
 def _best_line(
@@ -360,21 +390,19 @@ def _best_line(
 ) -> tuple[str, list[str]]:
     readings = []
     candidates = []
-    base_crop = _front_line_crop(images[0], box)
-    variants = (_otsu_line(base_crop), base_crop)
     order = 0
-    for crop in variants:
-        for psm in (7, 13):
-            reading, confidence = _ocr_line_with_confidence(crop, psm)
-            readings.append(reading)
-            candidate = _clean_single_line(reading, letters_only)
-            minimum = 3 if letters_only else 4
-            if len(re.sub(r"\W", "", candidate)) >= minimum:
-                # Un pequeño desempate conserva la preferencia por Otsu/PSM 7,
-                # pero la confianza reconocida domina la decisión.
-                candidates.append((confidence - order * .35, candidate))
-            order += 1
-    best = max(candidates, key=lambda item: item[0], default=(0.0, ""))[1]
+    for source in images:
+        base_crop = _front_line_crop(source, box)
+        for crop in (_otsu_line(base_crop), base_crop):
+            for psm in (7, 13):
+                reading, confidence = _ocr_line_with_confidence(crop, psm)
+                readings.append(reading)
+                candidate = _clean_single_line(reading, letters_only)
+                minimum = 3 if letters_only else 4
+                if len(re.sub(r"\W", "", candidate)) >= minimum:
+                    candidates.append((confidence, candidate, order))
+                order += 1
+    best = _choose_consensus(candidates)
     return best, readings
 
 
