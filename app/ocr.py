@@ -322,10 +322,20 @@ def _best_line(
     box: tuple[float, float, float, float],
     letters_only: bool,
 ) -> tuple[str, list[str]]:
-    whitelist = "ABCDEFGHIJKLMNOPQRSTUVWXYZÁÉÍÓÚÜÑ" if letters_only else "ABCDEFGHIJKLMNOPQRSTUVWXYZÁÉÍÓÚÜÑ0123456789,.#/-"
-    config = f"--oem 3 --psm 7 -c tessedit_char_whitelist={whitelist}"
-    readings = [_safe_ocr(_front_line_crop(image, box), config, timeout=12) for image in images]
-    candidates = [_clean_single_line(text, letters_only) for text in readings]
+    readings = []
+    candidates = []
+    # Prioriza la foto normal. PSM 13 es respaldo para renglones que PSM 7
+    # omite; la imagen binaria se consulta sólo después de ambas lecturas.
+    for image in images:
+        crop = _front_line_crop(image, box)
+        for psm in (7, 13):
+            reading = _safe_ocr(crop, f"--oem 3 --psm {psm}", timeout=12)
+            readings.append(reading)
+            candidate = _clean_single_line(reading, letters_only)
+            candidates.append(candidate)
+            minimum = 3 if letters_only else 4
+            if len(re.sub(r"\W", "", candidate)) >= minimum:
+                return candidate, readings
     best = max(candidates, key=lambda value: len(re.sub(r"\W", "", value)), default="")
     return best, readings
 

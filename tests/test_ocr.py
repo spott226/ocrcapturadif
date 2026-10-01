@@ -198,19 +198,18 @@ def test_perspective_correction_rectifies_a_complete_card():
 
 
 def test_separate_front_regions_recover_requested_fields(monkeypatch):
-    readings = iter([
-        "",
-        "MONTOYA", "M0NTOYA",
-        "SALMON", "SALMON",
-        "CHRISTOPHER LENIEL", "CHRISTOPHER LENIEL",
-        "C BENJAMIN DE LA MORA 112", "BENJAMIN MORA 112",
-        "ZONA CENTRO 20000", "CENTRO 20000",
-        "AGUASCALIENTES AGS", "AGS",
-        "MOSC010426HASNLHA4", "MOSCO10426HASNLHA4",
+    readings = iter(["", "MOSC010426HASNLHA4", "MOSCO10426HASNLHA4"])
+    lines = iter([
+        "MONTOYA", "SALMON", "CHRISTOPHER LENIEL",
+        "C BENJAMIN DE LA MORA 112", "ZONA CENTRO 20000", "AGUASCALIENTES AGS",
     ])
     monkeypatch.setattr(
         "app.ocr.pytesseract.image_to_string",
         lambda *_args, **_kwargs: next(readings),
+    )
+    monkeypatch.setattr(
+        "app.ocr._best_line",
+        lambda *_args, **_kwargs: (next(lines), []),
     )
     image = Image.new("RGB", (1600, 1000), "white")
     stream = BytesIO()
