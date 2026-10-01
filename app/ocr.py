@@ -277,9 +277,9 @@ def parse_front_regions(
 
 
 FRONT_REQUIRED_BOXES = {
-    "name": (.30, .26, .73, .48),
-    "address": (.30, .49, .77, .71),
-    "curp": (.30, .75, .70, .87),
+    "name": (.31, .26, .66, .48),
+    "address": (.31, .49, .69, .71),
+    "curp": (.31, .75, .66, .87),
 }
 
 
@@ -550,17 +550,21 @@ def extract_image(data: bytes, side: str | None = None) -> tuple[dict[str, str],
                     merged[key] = value
 
         if side == "front":
-            region_fields, region_text = _front_fields_from_regions(shadowless)
-            region_fields = sanitize_extracted(region_fields)
-            raw_parts.append(region_text)
-            for key, value in region_fields.items():
-                if not value:
-                    continue
-                if key in {"name", "address"}:
-                    if len(re.sub(r"\W", "", value)) >= len(re.sub(r"\W", "", merged[key])):
+            # En archivos reenviados, la versión normal suele conservar mejor
+            # las letras; en fotos con sombra gana la versión compensada.
+            # Se aceptan únicamente campos válidos y se conserva el más completo.
+            for regional_image in (clean, shadowless):
+                region_fields, region_text = _front_fields_from_regions(regional_image)
+                region_fields = sanitize_extracted(region_fields)
+                raw_parts.append(region_text)
+                for key, value in region_fields.items():
+                    if not value:
+                        continue
+                    if key in {"name", "address"}:
+                        if len(re.sub(r"\W", "", value)) >= len(re.sub(r"\W", "", merged[key])):
+                            merged[key] = value
+                    elif not merged[key]:
                         merged[key] = value
-                elif not merged[key]:
-                    merged[key] = value
 
         if side == "back":
             back_fields, back_text = _back_fields_from_mrz(shadowless)

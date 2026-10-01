@@ -203,6 +203,9 @@ def test_separate_front_regions_recover_requested_fields(monkeypatch):
         "NOMBRE\nMONTOYA\nSALMON\nCHRISTOPHER LENIEL",
         "DOMICILIO\nC BENJAMIN DE LA MORA 112\nZONA CENTRO 20000\nAGUASCALIENTES AGS",
         "CURP\nMOSC010426HASN LHA4",
+        "NOMBRE\nCIEL A DD A\nSALMON",
+        "DOMICILIO\nC BENJAMIN DE LA MORA 112",
+        "CURP\nMOSC010426HASNLHA4",
     ])
     monkeypatch.setattr(
         "app.ocr.pytesseract.image_to_string",
