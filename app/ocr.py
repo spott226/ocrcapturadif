@@ -276,16 +276,21 @@ def parse_front_regions(
     return result
 
 
-FRONT_REQUIRED_BOXES = {
-    "name": (.31, .26, .66, .48),
-    "address": (.31, .49, .69, .71),
-    "curp": (.31, .75, .66, .87),
-}
+FRONT_NAME_LINES = (
+    (.31, .31, .68, .37),
+    (.31, .36, .68, .42),
+    (.31, .40, .68, .47),
+)
+FRONT_ADDRESS_LINES = (
+    (.31, .55, .72, .61),
+    (.31, .59, .72, .66),
+    (.31, .64, .72, .70),
+)
+FRONT_CURP_LINE = (.31, .79, .68, .86)
 
 
-def _front_crop(image: Image.Image, field: str) -> Image.Image:
+def _front_line_crop(image: Image.Image, box: tuple[float, float, float, float]) -> Image.Image:
     width, height = image.size
-    box = FRONT_REQUIRED_BOXES[field]
     region = image.crop((
         int(width * box[0]), int(height * box[1]),
         int(width * box[2]), int(height * box[3]),
@@ -301,40 +306,64 @@ def _front_crop(image: Image.Image, field: str) -> Image.Image:
     )
 
 
-def _lines_after_label(text: str, label: str, limit: int) -> list[str]:
-    lines = normalize(text).splitlines()
-    selected = []
-    found = False
-    for line in lines:
-        if not found and label in line:
-            found = True
-            tail = line.split(label, 1)[1].strip(" :-")
-            if tail:
-                selected.append(tail)
-            continue
-        if found:
-            if re.search(r"\b(?:NOMBRE|DOMICILIO|CURP|CLAVE DE ELECTOR)\b", line):
-                break
-            selected.append(line)
-            if len(selected) >= limit:
-                break
-    return selected
+def _clean_single_line(text: str, letters_only: bool) -> str:
+    line = normalize(text).replace("\n", " ")
+    if letters_only:
+        line = re.sub(r"[^A-ZÁÉÍÓÚÜÑ' -]", "", line)
+        line = " ".join(word for word in line.split() if len(word) > 1)
+    else:
+        line = re.sub(r"[^A-ZÁÉÍÓÚÜÑ0-9 .,#/'-]", " ", line)
+        line = " ".join(line.split()).strip(" ,.-")
+    return line
 
 
-def _front_fields_from_regions(
-    image: Image.Image, config: str = "--oem 3 --psm 6",
+def _best_line(
+    images: tuple[Image.Image, ...],
+    box: tuple[float, float, float, float],
+    letters_only: bool,
+) -> tuple[str, list[str]]:
+    whitelist = "ABCDEFGHIJKLMNOPQRSTUVWXYZÁÉÍÓÚÜÑ" if letters_only else "ABCDEFGHIJKLMNOPQRSTUVWXYZÁÉÍÓÚÜÑ0123456789,.#/-"
+    config = f"--oem 3 --psm 7 -c tessedit_char_whitelist={whitelist}"
+    readings = [_safe_ocr(_front_line_crop(image, box), config, timeout=12) for image in images]
+    candidates = [_clean_single_line(text, letters_only) for text in readings]
+    best = max(candidates, key=lambda value: len(re.sub(r"\W", "", value)), default="")
+    return best, readings
+
+
+def _front_fields_from_lines(
+    clean: Image.Image, threshold: Image.Image,
 ) -> tuple[dict[str, str], str]:
-    texts = {
-        field: _safe_ocr(_front_crop(image, field), config, timeout=18)
-        for field in ("name", "address", "curp")
-    }
+    images = (clean, threshold)
     result = asdict(Extracted())
-    name_lines = _lines_after_label(texts["name"], "NOMBRE", 4)
+    raw_parts = []
+    name_lines = []
+    for box in FRONT_NAME_LINES:
+        line, readings = _best_line(images, box, letters_only=True)
+        raw_parts.extend(readings)
+        if line:
+            name_lines.append(line)
     result["name"] = " ".join(name_lines)
-    address_lines = _lines_after_label(texts["address"], "DOMICILIO", 3)
+    address_lines = []
+    for box in FRONT_ADDRESS_LINES:
+        line, readings = _best_line(images, box, letters_only=False)
+        raw_parts.extend(readings)
+        if line:
+            address_lines.append(line)
     result["address"] = "\n".join(address_lines)
-    result["curp"] = _curp_from_region(texts["curp"])
-    raw = "\n--- CAMPO ---\n".join(texts[field] for field in ("name", "address", "curp"))
+    curp_readings = [
+        _safe_ocr(
+            _front_line_crop(image, FRONT_CURP_LINE),
+            "--oem 3 --psm 7 -c tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
+            timeout=12,
+        )
+        for image in images
+    ]
+    raw_parts.extend(curp_readings)
+    for reading in curp_readings:
+        result["curp"] = _curp_from_region(reading)
+        if result["curp"]:
+            break
+    raw = "\n--- RENGLÓN ---\n".join(raw_parts)
     return sanitize_extracted(result), raw
 
 
@@ -552,28 +581,16 @@ def extract_image(data: bytes, side: str | None = None) -> tuple[dict[str, str],
                     merged[key] = value
 
         if side == "front":
-            # En archivos reenviados, la versión normal suele conservar mejor
-            # las letras; en fotos con sombra gana la versión compensada.
-            # Se aceptan únicamente campos válidos y se conserva el más completo.
-            regional_versions = (
-                (clean, "--oem 3 --psm 6"),
-                (shadowless, "--oem 3 --psm 11"),
-                (threshold, "--oem 3 --psm 6"),
-            )
-            for regional_image, regional_config in regional_versions:
-                region_fields, region_text = _front_fields_from_regions(
-                    regional_image, regional_config,
-                )
-                region_fields = sanitize_extracted(region_fields)
-                raw_parts.append(region_text)
-                for key, value in region_fields.items():
-                    if not value:
-                        continue
-                    if key in {"name", "address"}:
-                        if len(re.sub(r"\W", "", value)) >= len(re.sub(r"\W", "", merged[key])):
-                            merged[key] = value
-                    elif not merged[key]:
+            region_fields, region_text = _front_fields_from_lines(clean, threshold)
+            raw_parts.append(region_text)
+            for key, value in region_fields.items():
+                if not value:
+                    continue
+                if key in {"name", "address"}:
+                    if len(re.sub(r"\W", "", value)) >= len(re.sub(r"\W", "", merged[key])):
                         merged[key] = value
+                elif not merged[key]:
+                    merged[key] = value
 
         if side == "back":
             back_fields, back_text = _back_fields_from_mrz(shadowless)
