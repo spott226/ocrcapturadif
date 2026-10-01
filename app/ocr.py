@@ -276,106 +276,64 @@ def parse_front_regions(
     return result
 
 
-FRONT_FIELD_BOXES = {
-    "name": (.29, .20, .77, .46),
-    "address": (.29, .45, .78, .69),
-    "voter_key": (.29, .66, .78, .78),
-    "curp": (.29, .73, .69, .86),
-    "registration_year": (.64, .70, .94, .86),
-    "birth_date": (.29, .82, .57, .98),
-    "section": (.52, .82, .72, .98),
-    "valid_until": (.67, .81, .95, .98),
-    "sex_or_gender": (.79, .16, .99, .36),
+FRONT_REQUIRED_BOXES = {
+    "name": (.30, .26, .73, .48),
+    "address": (.30, .49, .77, .71),
+    "curp": (.30, .75, .70, .87),
 }
 
 
-def _front_field_montage(image: Image.Image) -> tuple[Image.Image, dict[str, tuple[int, int]]]:
+def _front_crop(image: Image.Image, field: str) -> Image.Image:
     width, height = image.size
-    montage_width = 1500
-    prepared = []
-    for field, box in FRONT_FIELD_BOXES.items():
-        region = image.crop((
-            int(width * box[0]), int(height * box[1]),
-            int(width * box[2]), int(height * box[3]),
-        ))
-        scale = min(4.0, 1250 / max(1, region.width))
+    box = FRONT_REQUIRED_BOXES[field]
+    region = image.crop((
+        int(width * box[0]), int(height * box[1]),
+        int(width * box[2]), int(height * box[3]),
+    ))
+    if region.width < 1400:
+        scale = min(4.0, 1400 / max(1, region.width))
         region = region.resize(
             (int(region.width * scale), int(region.height * scale)),
             Image.Resampling.LANCZOS,
         )
-        prepared.append((field, region))
-    montage_height = sum(region.height for _, region in prepared) + 70 * (len(prepared) + 1)
-    montage = Image.new("L", (montage_width, montage_height), 255)
-    bounds = {}
-    top = 70
-    for field, region in prepared:
-        left = (montage_width - region.width) // 2
-        montage.paste(region, (left, top))
-        bounds[field] = (top, top + region.height)
-        top += region.height + 70
-    return montage, bounds
-
-
-def _lines_from_words(words: list[tuple[int, int, int, str]]) -> str:
-    lines = []
-    for top, height, left, text in sorted(words):
-        tolerance = max(16, height)
-        if not lines or abs(top - lines[-1][0]) > tolerance:
-            lines.append([top, [(left, text)]])
-        else:
-            lines[-1][1].append((left, text))
-    return "\n".join(
-        " ".join(text for _, text in sorted(line_words))
-        for _, line_words in lines
+    return ImageOps.autocontrast(region, cutoff=1).filter(
+        ImageFilter.UnsharpMask(radius=1.0, percent=130, threshold=2),
     )
+
+
+def _lines_after_label(text: str, label: str, limit: int) -> list[str]:
+    lines = normalize(text).splitlines()
+    selected = []
+    found = False
+    for line in lines:
+        if not found and label in line:
+            found = True
+            tail = line.split(label, 1)[1].strip(" :-")
+            if tail:
+                selected.append(tail)
+            continue
+        if found:
+            if re.search(r"\b(?:NOMBRE|DOMICILIO|CURP|CLAVE DE ELECTOR)\b", line):
+                break
+            selected.append(line)
+            if len(selected) >= limit:
+                break
+    return selected
 
 
 def _front_fields_from_regions(image: Image.Image) -> tuple[dict[str, str], str]:
-    montage, bounds = _front_field_montage(image)
-    try:
-        data = pytesseract.image_to_data(
-            montage,
-            lang="spa",
-            config="--oem 3 --psm 6",
-            timeout=18,
-            output_type=pytesseract.Output.DICT,
-        )
-    except (RuntimeError, pytesseract.TesseractError):
-        return asdict(Extracted()), ""
-    words = {field: [] for field in bounds}
-    for index, text in enumerate(data.get("text", [])):
-        text = str(text).strip()
-        if not text:
-            continue
-        top = int(data["top"][index])
-        left = int(data["left"][index])
-        height = int(data["height"][index])
-        center = top + height // 2
-        for field, (start, end) in bounds.items():
-            if start <= center <= end:
-                words[field].append((top, height, left, text))
-                break
-    texts = {field: _lines_from_words(items) for field, items in words.items()}
-    document_order = (
-        "name", "address", "voter_key", "curp", "registration_year",
-        "birth_date", "section", "valid_until", "sex_or_gender",
-    )
-    reconstructed = "\n".join(texts[field] for field in document_order if texts[field])
-    parsed = parse_front_document(reconstructed)
-    # Las zonas pequeñas toleran etiquetas débiles usando el formato del dato.
-    if not parsed["curp"]:
-        parsed["curp"] = _curp_from_region(texts["curp"])
-    detail = parse_front_regions(
-        texts["address"], texts["curp"], texts["birth_date"],
-        texts["section"], texts["registration_year"], texts["valid_until"],
-    )
-    for key, value in detail.items():
-        if value and not parsed[key]:
-            parsed[key] = value
-    gender = re.search(r"\b(NB|H|M)\b", normalize(texts["sex_or_gender"]))
-    if gender and not parsed["sex_or_gender"]:
-        parsed["sex_or_gender"] = gender.group(1)
-    return parsed, reconstructed
+    texts = {
+        field: _safe_ocr(_front_crop(image, field), "--oem 3 --psm 6", timeout=18)
+        for field in ("name", "address", "curp")
+    }
+    result = asdict(Extracted())
+    name_lines = _lines_after_label(texts["name"], "NOMBRE", 4)
+    result["name"] = " ".join(name_lines)
+    address_lines = _lines_after_label(texts["address"], "DOMICILIO", 3)
+    result["address"] = "\n".join(address_lines)
+    result["curp"] = _curp_from_region(texts["curp"])
+    raw = "\n--- CAMPO ---\n".join(texts[field] for field in ("name", "address", "curp"))
+    return sanitize_extracted(result), raw
 
 
 def parse_back_mrz(text: str) -> dict[str, str]:
@@ -475,6 +433,11 @@ def _ordered_corners(points: np.ndarray) -> np.ndarray:
 def correct_document_perspective(image: Image.Image) -> Image.Image:
     """Endereza una credencial completa; si no hay borde confiable conserva la foto."""
     source = ImageOps.exif_transpose(image).convert("RGB")
+    source_ratio = source.width / max(1, source.height)
+    # Una foto ya recortada con proporción de credencial no debe volver a
+    # deformarse: es el caso habitual de archivos recibidos por WhatsApp.
+    if 1.52 <= source_ratio <= 1.66:
+        return source
     rgb = np.asarray(source)
     height, width = rgb.shape[:2]
     detection_scale = min(1.0, 1400 / max(width, height))
@@ -572,7 +535,7 @@ def prepare_ocr_images(image: Image.Image) -> tuple[Image.Image, Image.Image, Im
 def extract_image(data: bytes, side: str | None = None) -> tuple[dict[str, str], str]:
     with Image.open(BytesIO(data)) as image:
         clean, shadowless, threshold = prepare_ocr_images(image)
-        passes = (
+        passes = ((shadowless, "--oem 3 --psm 11"),) if side == "front" else (
             (shadowless, "--oem 3 --psm 11"),
             (threshold, "--oem 3 --psm 6"),
         )
