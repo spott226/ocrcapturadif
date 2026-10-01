@@ -326,7 +326,9 @@ def _clean_single_line(text: str, letters_only: bool) -> str:
     return line
 
 
-def _ocr_line_with_confidence(image: Image.Image, psm: int) -> tuple[str, float]:
+def _ocr_line_with_confidence(
+    image: Image.Image, psm: int, minimum_confidence: float = 12,
+) -> tuple[str, float]:
     try:
         data = pytesseract.image_to_data(
             image,
@@ -350,7 +352,7 @@ def _ocr_line_with_confidence(image: Image.Image, psm: int) -> tuple[str, float]
             confidence = float(raw_confidence)
         except (TypeError, ValueError):
             confidence = -1
-        if not token or confidence < 30:
+        if not token or confidence < minimum_confidence:
             continue
         left = int(raw_left)
         token_width = int(raw_width)
