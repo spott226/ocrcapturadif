@@ -405,6 +405,22 @@ def _best_line(
                 if len(re.sub(r"\W", "", candidate)) >= minimum:
                     candidates.append((confidence, candidate, order))
                 order += 1
+        whitelist = (
+            "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+            if letters_only else "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.,#/-"
+        )
+        restricted = _safe_ocr(
+            base_crop,
+            "--oem 3 --psm 7 -c preserve_interword_spaces=1 "
+            f"-c tessedit_char_whitelist={whitelist}",
+            timeout=12,
+        )
+        readings.append(restricted)
+        restricted_candidate = _clean_single_line(restricted, letters_only)
+        minimum = 3 if letters_only else 4
+        if len(re.sub(r"\W", "", restricted_candidate)) >= minimum:
+            candidates.append((55.0, restricted_candidate, order))
+        order += 1
     best = _choose_consensus(candidates)
     return best, readings
 
