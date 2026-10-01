@@ -45,7 +45,8 @@ def sanitize_extracted(fields: dict[str, str]) -> dict[str, str]:
     address_lines = []
     for line in normalize(clean.get("address", "")).splitlines()[:3]:
         line = re.sub(r"[^A-ZÁÉÍÓÚÜÑ0-9 .,#/'-]", " ", line)
-        line = " ".join(line.split()).strip(" ,.-")
+        line = " ".join(line.split()).strip(" ,.-'")
+        line = re.sub(r"\bAGUAS[GC]ALIENTES\b", "AGUASCALIENTES", line)
         if len(line) >= 3 and line != "DOMICILIO":
             address_lines.append(line)
     clean["address"] = "\n".join(address_lines)[:500]
@@ -283,9 +284,9 @@ FRONT_NAME_LINES = (
     (.31, .410, .62, .455),
 )
 FRONT_ADDRESS_LINES = (
-    (.31, .560, .66, .603),
-    (.31, .605, .66, .646),
-    (.31, .648, .66, .686),
+    (.31, .560, .64, .603),
+    (.31, .605, .64, .646),
+    (.31, .648, .64, .686),
 )
 FRONT_CURP_LINE = (.31, .79, .68, .86)
 
@@ -321,7 +322,7 @@ def _clean_single_line(text: str, letters_only: bool) -> str:
         line = " ".join(word for word in line.split() if len(word) > 1)
     else:
         line = re.sub(r"[^A-ZÁÉÍÓÚÜÑ0-9 .,#/'-]", " ", line)
-        line = " ".join(line.split()).strip(" ,.-")
+        line = " ".join(line.split()).strip(" ,.-'")
     return line
 
 
@@ -355,7 +356,7 @@ def _ocr_line_with_confidence(image: Image.Image, psm: int) -> tuple[str, float]
         token_width = int(raw_width)
         # En la INE cada renglón es continuo. Un salto grande suele ser texto
         # de seguridad o parte de otro campo, no continuación del dato.
-        if previous_right is not None and left - previous_right > image.width * .10:
+        if previous_right is not None and left - previous_right > image.width * .18:
             break
         token_weight = max(1, len(re.sub(r"\W", "", token)))
         accepted.append(token)

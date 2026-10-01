@@ -26,6 +26,14 @@ def test_consensus_prefers_repeated_clean_reading_over_long_noise():
     assert _choose_consensus(candidates) == "SALMON"
 
 
+def test_address_sanitizer_removes_edge_noise_and_common_place_typo():
+    data = sanitize_extracted({
+        "address": "' AGUASGALIENTES AGS.",
+    })
+
+    assert data["address"] == "AGUASCALIENTES AGS"
+
+
 def test_parse_fictitious_ine_text():
     text = """INSTITUTO NACIONAL ELECTORAL
 NOMBRE
