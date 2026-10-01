@@ -241,6 +241,7 @@ def test_separate_front_regions_recover_requested_fields(monkeypatch):
         "app.ocr._best_line",
         lambda *_args, **_kwargs: (next(lines), []),
     )
+    monkeypatch.setattr("app.ocr._safe_rapid_ocr", lambda *_args: "")
     image = Image.new("RGB", (1600, 1000), "white")
     stream = BytesIO()
     image.save(stream, format="JPEG")
@@ -250,6 +251,34 @@ def test_separate_front_regions_recover_requested_fields(monkeypatch):
     assert data["name"] == "MONTOYA SALMON CHRISTOPHER LENIEL"
     assert data["address"] == "C BENJAMIN DE LA MORA 112\nZONA CENTRO 20000\nAGUASCALIENTES AGS"
     assert data["curp"] == "MOSC010426HASNLHA4"
+
+
+def test_rapid_ocr_is_primary_when_it_recovers_all_requested_fields(monkeypatch):
+    monkeypatch.setattr(
+        "app.ocr._safe_rapid_ocr",
+        lambda *_args: """NOMBRE
+MONTOYA
+SALMON
+CHRISTOPHER LENIEL
+DOMICILIO
+C BENJAMIN DE LA MORA 112
+ZONA CENTRO 20000
+AGUASCALIENTES, AGS.
+CURP MOSC010426HASNLHA4""",
+    )
+    monkeypatch.setattr(
+        "app.ocr.prepare_ocr_images",
+        lambda *_args: (_ for _ in ()).throw(AssertionError("No debe ejecutar el respaldo")),
+    )
+    image = Image.new("RGB", (1600, 1000), "white")
+    stream = BytesIO()
+    image.save(stream, format="JPEG")
+
+    data, _raw = extract_image(stream.getvalue(), side="front")
+
+    assert data["name"] == "MONTOYA SALMON CHRISTOPHER LENIEL"
+    assert data["curp"] == "MOSC010426HASNLHA4"
+    assert data["address"] == "C BENJAMIN DE LA MORA 112\nZONA CENTRO 20000\nAGUASCALIENTES, AGS"
 
 
 def test_front_document_corrects_noisy_labels_and_digits():

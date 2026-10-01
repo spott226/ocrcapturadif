@@ -2,6 +2,7 @@ import re
 from dataclasses import dataclass, asdict
 from datetime import datetime
 from difflib import SequenceMatcher
+from functools import lru_cache
 from io import BytesIO
 import cv2
 import numpy as np
@@ -26,6 +27,34 @@ class Extracted:
     cic: str = ""
     ocr_code: str = ""
     valid_until: str = ""
+
+
+@lru_cache(maxsize=1)
+def _rapid_engine():
+    from rapidocr import RapidOCR
+
+    return RapidOCR()
+
+
+def _safe_rapid_ocr(image: Image.Image) -> str:
+    """Lee la foto en memoria con RapidOCR; Tesseract queda como respaldo."""
+    try:
+        output = _rapid_engine()(np.asarray(image.convert("RGB")))
+    except Exception:
+        return ""
+    if output is None or not output.txts:
+        return ""
+    main_lines = []
+    deferred_lines = []
+    for text, score in zip(output.txts, output.scores):
+        line = str(text or "").strip()
+        if not line or float(score) < .50:
+            continue
+        # SEXO puede salir antes de los renglones del nombre por estar a la
+        # misma altura. Se difiere para conservar el orden lógico de lectura.
+        target = deferred_lines if re.match(r"^(?:SEXO|G[ÉE]NERO)\b", line.upper()) else main_lines
+        target.append(line)
+    return "\n".join(main_lines + deferred_lines)
 
 
 def sanitize_extracted(fields: dict[str, str]) -> dict[str, str]:
@@ -682,13 +711,20 @@ def prepare_ocr_images(image: Image.Image) -> tuple[Image.Image, Image.Image, Im
 
 def extract_image(data: bytes, side: str | None = None) -> tuple[dict[str, str], str]:
     with Image.open(BytesIO(data)) as image:
+        rapid_text = _safe_rapid_ocr(image) if side == "front" else ""
+        rapid_fields = sanitize_extracted(parse_ine_text(rapid_text)) if rapid_text else {}
+        if all(rapid_fields.get(key) for key in ("name", "curp", "address")):
+            return rapid_fields, rapid_text
         clean, shadowless, threshold = prepare_ocr_images(image)
         passes = ((shadowless, "--oem 3 --psm 11"),) if side == "front" else (
             (shadowless, "--oem 3 --psm 11"),
             (threshold, "--oem 3 --psm 6"),
         )
         merged = asdict(Extracted())
-        raw_parts = []
+        raw_parts = [rapid_text] if rapid_text else []
+        for key, value in rapid_fields.items():
+            if value:
+                merged[key] = value
         for prepared, config in passes:
             text = _safe_ocr(prepared, config, timeout=15)
             raw_parts.append(text)

@@ -1,6 +1,6 @@
 # DIF · Captura Apoyos (MVP)
 
-Aplicación web móvil/escritorio para fotografiar el frente de una INE, proponer nombre completo, CURP y dirección con Tesseract OCR, agregar teléfono y líder manualmente, detectar coincidencias y exportar registros a Excel.
+Aplicación web móvil/escritorio para fotografiar o subir el frente de una INE, proponer nombre completo, CURP y dirección con RapidOCR y Tesseract como respaldo, agregar teléfono y líder manualmente, detectar coincidencias y exportar registros a Excel.
 
 ## Alcance y decisiones de privacidad
 
