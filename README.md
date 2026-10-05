@@ -47,6 +47,12 @@ Abra `http://localhost:8000`.
 
 Las tablas se crean en el arranque para simplificar el MVP. Antes de evolucionar el esquema en producción, incorpore Alembic y copias de seguridad administradas.
 
+## Entrega para IIS y SQL Server
+
+La carpeta `deploy/windows-iis` contiene `web.config`, instalador de PowerShell, scripts para SSMS, verificación e instrucciones para Windows Server. El paquete admite autenticación integrada de Windows o una cuenta SQL dedicada mediante ODBC Driver 18. SSMS administra SQL Server, pero no sustituye al motor de base de datos.
+
+Para entregar al DIF, copie el código sin `.git`, `.venv`, cachés, bases de prueba ni `.env`; después coloque los archivos de `deploy/windows-iis` en la raíz del paquete. Consulte `deploy/windows-iis/LEEME_PRIMERO.md` antes de instalar. La entrega de código no incluye ni recupera los datos que existieran en Railway.
+
 ## Desarrollo y pruebas
 
 ```bash

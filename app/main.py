@@ -8,7 +8,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Stre
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from openpyxl import Workbook
-from sqlalchemy import func, inspect, or_, select, text
+from sqlalchemy import Unicode, func, inspect, or_, select, text
 from sqlalchemy.orm import Session
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.middleware.httpsredirect import HTTPSRedirectMiddleware
@@ -23,27 +23,31 @@ BASE = Path(__file__).resolve().parent
 logger = logging.getLogger("uvicorn.error")
 
 EXTRA_COLUMNS = {
-    "phone": "VARCHAR(15) NOT NULL DEFAULT ''",
-    "leader": "VARCHAR(180) NOT NULL DEFAULT ''",
-    "birth_date": "VARCHAR(20) NOT NULL DEFAULT ''",
-    "sex_or_gender": "VARCHAR(20) NOT NULL DEFAULT ''",
-    "state_code": "VARCHAR(20) NOT NULL DEFAULT ''",
-    "municipality_code": "VARCHAR(20) NOT NULL DEFAULT ''",
-    "section": "VARCHAR(10) NOT NULL DEFAULT ''",
-    "locality_code": "VARCHAR(20) NOT NULL DEFAULT ''",
-    "registration_year": "VARCHAR(20) NOT NULL DEFAULT ''",
-    "issue_year": "VARCHAR(10) NOT NULL DEFAULT ''",
-    "cic": "VARCHAR(20) NOT NULL DEFAULT ''",
-    "ocr_code": "VARCHAR(20) NOT NULL DEFAULT ''",
+    "phone": Unicode(15),
+    "leader": Unicode(180),
+    "birth_date": Unicode(20),
+    "sex_or_gender": Unicode(20),
+    "state_code": Unicode(20),
+    "municipality_code": Unicode(20),
+    "section": Unicode(10),
+    "locality_code": Unicode(20),
+    "registration_year": Unicode(20),
+    "issue_year": Unicode(10),
+    "cic": Unicode(20),
+    "ocr_code": Unicode(20),
 }
 
 
 def migrate_existing_database():
     existing = {column["name"] for column in inspect(engine).get_columns("people")}
     with engine.begin() as connection:
-        for column, definition in EXTRA_COLUMNS.items():
+        add_keyword = "ADD" if engine.dialect.name == "mssql" else "ADD COLUMN"
+        for column, column_type in EXTRA_COLUMNS.items():
             if column not in existing:
-                connection.execute(text(f"ALTER TABLE people ADD COLUMN {column} {definition}"))
+                type_sql = column_type.compile(dialect=engine.dialect)
+                connection.execute(text(
+                    f"ALTER TABLE people {add_keyword} {column} {type_sql} NOT NULL DEFAULT ''"
+                ))
 
 
 @asynccontextmanager
@@ -55,7 +59,7 @@ async def lifespan(_app: FastAPI):
 
 app = FastAPI(title="DIF · Captura Apoyos", docs_url=None, redoc_url=None, lifespan=lifespan)
 app.add_middleware(SessionMiddleware, secret_key=settings.secret_key, https_only=settings.cookie_secure, same_site="lax", max_age=28800)
-if settings.cookie_secure:
+if settings.force_https:
     app.add_middleware(HTTPSRedirectMiddleware)
 app.mount("/static", StaticFiles(directory=BASE / "static"), name="static")
 templates = Jinja2Templates(directory=BASE / "templates")

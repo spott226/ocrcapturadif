@@ -1,0 +1,26 @@
+CAPTURA APOYOS DIF - ENTREGA PARA SISTEMAS
+Fecha de preparación: 05/10/2026
+
+Incluye:
+- Aplicación FastAPI y OCR.
+- Configuración IIS HttpPlatformHandler.
+- Compatibilidad con Microsoft SQL Server mediante ODBC Driver 18.
+- Script de creación para SQL Server Management Studio.
+- Instalador y verificador para Windows Server.
+- Importador de respaldos Excel.
+- Pruebas automatizadas con datos ficticios.
+
+Validaciones realizadas en el equipo de desarrollo:
+- 24 pruebas automatizadas aprobadas.
+- Scripts PowerShell analizados sin errores de sintaxis.
+- web.config validado como XML.
+- Esquema SQLAlchemy compilado para SQL Server con 20 columnas.
+- pyodbc 5.3.0 y ODBC Driver 18 detectados en Windows.
+
+No incluye:
+- Registros reales ni respaldo de Railway.
+- Imágenes de INE.
+- Contraseñas, archivo .env o llaves.
+- Entorno .venv, cachés o base SQLite de prueba.
+
+La conexión real a SQL Server y el HTTPS deben validarse en el servidor del DIF.
