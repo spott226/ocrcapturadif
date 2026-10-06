@@ -293,10 +293,18 @@ def health():
 
 
 @app.get("/login", response_class=HTMLResponse)
-def login_form(request: Request, db: Session = Depends(get_db)):
+def login_form(
+    request: Request,
+    cambiada: int = Query(0),
+    db: Session = Depends(get_db),
+):
     if current_user(request, db):
         return RedirectResponse("/", status_code=303)
-    return page(request, "login.html")
+    return page(
+        request,
+        "login.html",
+        success="Contraseña actualizada. Ingrese con la nueva contraseña." if cambiada else None,
+    )
 
 
 @app.post("/login", response_class=HTMLResponse)
@@ -324,6 +332,44 @@ def logout(request: Request, csrf: str = Form(...)):
     require_csrf(request, csrf)
     request.session.clear()
     return RedirectResponse("/login", status_code=303)
+
+
+def password_page(request: Request, *, error: str | None = None):
+    return page(request, "password.html", error=error)
+
+
+@app.get("/cuenta/contrasena", response_class=HTMLResponse)
+def change_password_form(request: Request, db: Session = Depends(get_db)):
+    require_user(request, db)
+    return password_page(request)
+
+
+@app.post("/cuenta/contrasena", response_class=HTMLResponse)
+def change_password(
+    request: Request,
+    current_password: str = Form(...),
+    new_password: str = Form(...),
+    confirm_password: str = Form(...),
+    csrf: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    user = require_user(request, db)
+    require_csrf(request, csrf)
+    if not verify_password(current_password, user.password_hash):
+        return password_page(request, error="La contraseña actual no es correcta.")
+    if not 12 <= len(new_password) <= 200:
+        return password_page(
+            request,
+            error="La nueva contraseña debe tener entre 12 y 200 caracteres.",
+        )
+    if new_password != confirm_password:
+        return password_page(request, error="La confirmación no coincide.")
+    if verify_password(new_password, user.password_hash):
+        return password_page(request, error="La nueva contraseña debe ser diferente.")
+    user.password_hash = password_hash.hash(new_password)
+    db.commit()
+    request.session.clear()
+    return RedirectResponse("/login?cambiada=1", status_code=303)
 
 
 @app.get("/", response_class=HTMLResponse)

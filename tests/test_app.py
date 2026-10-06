@@ -269,6 +269,37 @@ def test_superadmin_cannot_disable_or_demote_self():
         ).status_code == 400
 
 
+def test_user_can_change_password_and_old_password_stops_working():
+    new_password = "nueva-contrasena-segura-456"
+    with TestClient(app) as client:
+        login(client)
+        form = client.get("/cuenta/contrasena")
+        response = client.post(
+            "/cuenta/contrasena",
+            data={
+                "current_password": "a-secure-test-password",
+                "new_password": new_password,
+                "confirm_password": new_password,
+                "csrf": csrf_from(form),
+            },
+        )
+        assert response.status_code == 200
+        assert "Contraseña actualizada" in response.text
+
+        old_login = client.post(
+            "/login",
+            data={
+                "email": "admin@example.test",
+                "password": "a-secure-test-password",
+                "csrf": csrf_from(client.get("/login")),
+            },
+        )
+        assert "Correo o contraseña incorrectos" in old_login.text
+
+        new_login = login(client, password=new_password)
+        assert "Superadministrador" in new_login.text
+
+
 def test_excel_import_supports_legacy_and_v2_without_writing_in_simulation(tmp_path):
     with TestClient(app):
         with SessionLocal() as db:
