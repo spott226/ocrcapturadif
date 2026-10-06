@@ -1,0 +1,8 @@
+ESTE PAQUETE ESTA PREPARADO, PERO LA PUBLICACION ESTA BLOQUEADA A PROPOSITO.
+
+Falta recopilar y fusionar la version que actualmente funciona en el servidor del DIF.
+Ejecute RECOPILAR_VERSION_ACTUAL.ps1 y entregue el ZIP generado. Despues de fusionarlo
+y probarlo se reemplazara VERSION_BASE_SERVIDOR.sha256 con la huella correcta.
+
+ACTUALIZAR_IIS.ps1 se negara a reemplazar codigo mientras falte esa huella. Esta medida
+evita perder los cambios manuales que se hicieron durante la instalacion anterior.

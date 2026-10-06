@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}Usuarios · Captura Apoyos{% endblock %}
+{% block content %}
+<section class="hero compact-hero"><div><p class="eyebrow">Administración</p><h1>Usuarios</h1><p>Las modificaciones de acceso se aplican en la siguiente solicitud del usuario.</p></div><a class="button ghost" href="/">Volver a capturas</a></section>
+{% if error %}<div class="alert">{{ error }}</div>{% endif %}
+{% if request.query_params.get('creado') %}<div class="success">Usuario creado.</div>{% endif %}
+{% if request.query_params.get('actualizado') %}<div class="success">Usuario actualizado.</div>{% endif %}
+
+<section class="card">
+  <h2>Agregar usuario</h2>
+  <form method="post" action="/admin/usuarios" class="form-grid">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <label>Correo institucional<input type="email" name="email" maxlength="254" autocomplete="off" required></label>
+    <label>Rol<select name="role" required><option value="capturista">Capturista</option><option value="superadmin">Superadministrador</option></select></label>
+    <label class="wide">Contraseña inicial<input type="password" name="password" minlength="12" maxlength="200" autocomplete="new-password" required><small>Mínimo 12 caracteres. Entréguela por un medio seguro.</small></label>
+    <div class="actions wide"><span></span><button>Crear usuario</button></div>
+  </form>
+</section>
+
+<section class="card">
+  <div class="section-head"><h2>Cuentas</h2><span>{{ active_admins }} superadministrador(es) activo(s)</span></div>
+  <div class="admin-list">
+    {% for account in users %}
+    <article class="admin-item">
+      <div class="admin-summary"><strong>{{ account.email }}</strong><span class="status {{ 'status-active' if account.active else 'status-inactive' }}">{{ 'Activo' if account.active else 'Inactivo' }}</span><small>Creado por {{ account.created_by }}</small></div>
+      <form method="post" action="/admin/usuarios/{{ account.id }}/rol" class="inline-admin-form">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <label>Rol<select name="role"><option value="capturista" {% if account.role == 'capturista' %}selected{% endif %}>Capturista</option><option value="superadmin" {% if account.role == 'superadmin' %}selected{% endif %}>Superadministrador</option></select></label>
+        <button class="button ghost">Cambiar rol</button>
+      </form>
+      <form method="post" action="/admin/usuarios/{{ account.id }}/estado" class="inline-admin-form">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <input type="hidden" name="active" value="{{ '0' if account.active else '1' }}">
+        <button class="{{ 'danger-outline' if account.active else '' }}">{{ 'Desactivar' if account.active else 'Activar' }}</button>
+      </form>
+    </article>
+    {% endfor %}
+  </div>
+</section>
+{% endblock %}

@@ -10,7 +10,10 @@ Esta carpeta contiene la aplicación y los instaladores. **No contiene los regis
 4. Microsoft ODBC Driver 18 for SQL Server x64.
 5. SQL Server Database Engine accesible. SQL Server Management Studio (SSMS) sirve para administrarlo, pero SSMS por sí solo no es la base de datos.
 6. Certificado HTTPS institucional. La cámara del celular requiere un sitio seguro.
-7. Recomendado: Microsoft Visual C++ Redistributable x64. Tesseract 5 con idioma español es opcional como respaldo; RapidOCR es el lector principal.
+7. **Obligatorio:** Microsoft Visual C++ Redistributable v14 x64 (2015-2022). ONNX Runtime, usado por RapidOCR, no puede cargar sus DLL sin este componente. Descárguelo manualmente desde Microsoft: <https://aka.ms/vs/17/release/vc_redist.x64.exe>.
+8. Tesseract 5 con idioma español es opcional como respaldo; RapidOCR es el lector principal.
+
+`INSTALAR_IIS.ps1` y `VERIFICAR_SERVIDOR.ps1` comprueban el registro x64 y las DLL requeridas antes de continuar. No descargan ni instalan el redistribuible. Si falta, instálelo manualmente, reinicie Windows si el instalador lo solicita y vuelva a ejecutar el mismo script.
 
 ## Instalación corta
 

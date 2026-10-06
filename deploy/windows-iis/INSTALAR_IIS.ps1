@@ -35,6 +35,63 @@ function Nueva-ClaveSecreta {
     return [Convert]::ToBase64String($Bytes)
 }
 
+function Confirmar-VCRuntimeX64 {
+    if (-not [Environment]::Is64BitOperatingSystem) {
+        throw 'Este paquete requiere Windows x64.'
+    }
+
+    $Registrado = $false
+    $Version = 'desconocida'
+    $BaseRegistro = [Microsoft.Win32.RegistryKey]::OpenBaseKey(
+        [Microsoft.Win32.RegistryHive]::LocalMachine,
+        [Microsoft.Win32.RegistryView]::Registry64
+    )
+    $ClaveRegistro = $null
+    try {
+        $ClaveRegistro = $BaseRegistro.OpenSubKey('SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\x64')
+        if ($ClaveRegistro) {
+            $Registrado = [int]$ClaveRegistro.GetValue('Installed', 0) -eq 1
+            $VersionDetectada = [string]$ClaveRegistro.GetValue('Version', '')
+            if ($VersionDetectada) { $Version = $VersionDetectada }
+        }
+    }
+    finally {
+        if ($ClaveRegistro) { $ClaveRegistro.Dispose() }
+        $BaseRegistro.Dispose()
+    }
+
+    $DirectorioSistema = if ([Environment]::Is64BitProcess) {
+        Join-Path $env:WINDIR 'System32'
+    }
+    else {
+        Join-Path $env:WINDIR 'Sysnative'
+    }
+    $DllsFaltantes = @()
+    foreach ($Dll in @('vcruntime140.dll', 'vcruntime140_1.dll', 'msvcp140.dll')) {
+        if (-not (Test-Path -LiteralPath (Join-Path $DirectorioSistema $Dll))) {
+            $DllsFaltantes += $Dll
+        }
+    }
+
+    if (-not $Registrado -or $DllsFaltantes.Count -gt 0) {
+        $Detalle = if ($DllsFaltantes.Count -gt 0) {
+            ' DLL faltantes: ' + ($DllsFaltantes -join ', ') + '.'
+        }
+        else { '' }
+        throw (
+            'Falta Microsoft Visual C++ Redistributable v14 x64 (2015-2022), requerido por ONNX Runtime/RapidOCR.' +
+            $Detalle + ' Descárguelo manualmente desde Microsoft: ' +
+            'https://aka.ms/vs/17/release/vc_redist.x64.exe . Instálelo, reinicie si se solicita y vuelva a ejecutar ' +
+            'INSTALAR_IIS.ps1. Este script no descarga ni instala ese componente.'
+        )
+    }
+
+    Write-Host "Microsoft Visual C++ Redistributable x64 detectado ($Version)." -ForegroundColor DarkGreen
+}
+
+Write-Host 'Comprobando Microsoft Visual C++ Redistributable x64...' -ForegroundColor Cyan
+Confirmar-VCRuntimeX64
+
 Write-Host '1/5 Creando el entorno privado de Python...' -ForegroundColor Cyan
 $Py = Get-Command py.exe -ErrorAction SilentlyContinue
 if (-not $Py) { throw 'Instale Python 3.11 o 3.12 x64 desde python.org y vuelva a ejecutar este instalador.' }
@@ -51,6 +108,15 @@ if (-not (Test-Path -LiteralPath '.\.venv\Scripts\python.exe')) {
 if ($LASTEXITCODE -ne 0) { throw 'No se pudo actualizar pip.' }
 & '.\.venv\Scripts\python.exe' -m pip install -r 'requirements.txt'
 if ($LASTEXITCODE -ne 0) { throw 'No se pudieron instalar las dependencias. Revise Internet/proxy del servidor.' }
+
+Write-Host 'Comprobando la carga nativa de ONNX Runtime...' -ForegroundColor Cyan
+& '.\.venv\Scripts\python.exe' -c "import onnxruntime as ort; print('ONNX Runtime ' + ort.__version__ + ' cargado correctamente')"
+if ($LASTEXITCODE -ne 0) {
+    throw (
+        'ONNX Runtime quedó instalado pero Windows no pudo cargar sus DLL. Repare o instale Microsoft Visual C++ ' +
+        'Redistributable v14 x64 desde https://aka.ms/vs/17/release/vc_redist.x64.exe y vuelva a ejecutar el instalador.'
+    )
+}
 
 foreach ($Carpeta in @('data', 'logs', 'backups')) {
     New-Item -ItemType Directory -Force -Path (Join-Path $Raiz $Carpeta) | Out-Null

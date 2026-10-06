@@ -1,4 +1,36 @@
-<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{% block title %}DIF · Captura Apoyos{% endblock %}</title><link rel="stylesheet" href="/static/style.css?v=20260930-1"><link rel="stylesheet" href="/static/camera.css?v=20260930-1"><link rel="stylesheet" href="/static/responsive.css?v=20260930-1"><link rel="stylesheet" href="/static/capture-fields.css?v=20260930-1"><script src="/static/camera.js?v=20260930-1" defer></script><script src="/static/ui.js?v=20260930-1" defer></script></head><body>
-<header><a href="/" class="brand"><span>DIF</span> Captura Apoyos</a>{% if user %}<form method="post" action="/logout"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="link">Cerrar sesión</button></form>{% endif %}</header>
-<main>{% block content %}{% endblock %}</main><footer>Uso institucional · Los datos personales deben tratarse conforme al aviso de privacidad aplicable.</footer>
-</body></html>
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>{% block title %}DIF · Captura Apoyos{% endblock %}</title>
+  <link rel="stylesheet" href="/static/style.css?v=20261006-2">
+  <link rel="stylesheet" href="/static/camera.css?v=20261006-2">
+  <link rel="stylesheet" href="/static/responsive.css?v=20261006-2">
+  <link rel="stylesheet" href="/static/capture-fields.css?v=20261006-2">
+  <script src="/static/camera.js?v=20261006-2" defer></script>
+  <script src="/static/ui.js?v=20261006-2" defer></script>
+</head>
+<body>
+<header>
+  <a href="/" class="brand"><span>DIF</span> Captura Apoyos</a>
+  {% if user %}
+  <div class="account-nav">
+    {% if user.is_superadmin %}
+    <nav aria-label="Administración">
+      <a href="/admin/tipos-apoyo">Tipos de apoyo</a>
+      <a href="/admin/usuarios">Usuarios</a>
+    </nav>
+    {% endif %}
+    <span class="account-label">{{ user.email }} · {{ 'Superadministrador' if user.is_superadmin else 'Capturista' }}</span>
+    <form method="post" action="/logout">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <button class="link">Cerrar sesión</button>
+    </form>
+  </div>
+  {% endif %}
+</header>
+<main>{% block content %}{% endblock %}</main>
+<footer>Uso institucional · Los datos personales deben tratarse conforme al aviso de privacidad aplicable.</footer>
+</body>
+</html>

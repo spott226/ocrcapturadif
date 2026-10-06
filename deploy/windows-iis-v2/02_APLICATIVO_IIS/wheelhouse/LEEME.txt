@@ -1,0 +1,2 @@
+Opcional: coloque aquí ruedas .whl aprobadas para una instalación sin Internet.
+Si no hay archivos .whl, ACTUALIZAR_IIS.ps1 utilizará el índice pip configurado en el servidor.

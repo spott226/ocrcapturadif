@@ -1,0 +1,16 @@
+Validado el 2026-10-06:
+
+- Aplicación, roles, catálogo, importación y OCR: 45 pruebas automáticas aprobadas con
+  datos ficticios. No se afirma precisión OCR sobre documentos reales.
+- ACTUALIZAR_IIS.ps1: sintaxis aceptada por Windows PowerShell 5.1.
+- RECOPILAR_VERSION_ACTUAL.ps1: sintaxis aceptada y prueba funcional ejecutada con
+  Windows PowerShell 5.1; el ZIP de prueba no incluyó .env, .venv, datos, imágenes,
+  cachés ni archivos de base de datos.
+- REVERTIR_ACTUALIZACION.ps1: sintaxis aceptada por Windows PowerShell 5.1.
+- VERIFICAR_ACTUALIZACION.py: compilación sintáctica correcta.
+- Búsqueda estática: los scripts no invocan iisreset ni crean/eliminan bindings o
+  certificados.
+
+Los SQL se revisaron de forma estática, pero no se ejecutaron contra la base real. El
+DBA debe seguir la precomprobación, respaldo y verificación incluidas. Esto no afirma
+resultados de producción que todavía no se han ejecutado.

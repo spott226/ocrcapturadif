@@ -9,4 +9,9 @@ data/
 logs/
 backups/
 *.bak
+entrega/
+deploy/windows-iis-v2/02_APLICATIVO_IIS/payload/
+pip-build-tracker-*/
+pip-ephem-wheel-cache-*/
+pip-install-*/
 

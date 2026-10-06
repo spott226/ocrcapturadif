@@ -1,5 +1,6 @@
 from io import BytesIO
 
+import pytest
 from PIL import Image, ImageDraw, ImageStat
 
 from app.ocr import (
@@ -65,6 +66,9 @@ OCR 1234567890123
 VIGENCIA 2026-2036"""
     data = parse_ine_text(text)
     assert data["name"] == "PRUEBA LOPEZ ANA"
+    assert data["paternal_surname"] == ""
+    assert data["maternal_surname"] == ""
+    assert data["given_names"] == ""
     assert data["curp"] == "PULA900101MDFRPN09"
     assert data["voter_key"] == "PRLBAN90010109M100"
     assert data["birth_date"] == "01/01/1990"
@@ -82,7 +86,9 @@ VIGENCIA 2026-2036"""
 
 def test_empty_text_does_not_invent_data():
     assert parse_ine_text("texto ilegible") == {
-        "name": "", "address": "", "curp": "", "voter_key": "",
+        "name": "", "given_names": "", "paternal_surname": "",
+        "maternal_surname": "", "address": "", "municipality": "",
+        "curp": "", "voter_key": "",
         "birth_date": "", "sex_or_gender": "", "state_code": "",
         "municipality_code": "", "section": "", "locality_code": "",
         "registration_year": "", "issue_year": "", "cic": "",
@@ -180,6 +186,9 @@ GOMEZ<VELAZQUEZ<<MARGARITA<<<<"""
     back_data = parse_ine_text(back)
 
     assert front_data["name"] == "GOMEZ VELAZQUEZ MARGARITA"
+    assert front_data["paternal_surname"] == "GOMEZ"
+    assert front_data["maternal_surname"] == "VELAZQUEZ"
+    assert front_data["given_names"] == "MARGARITA"
     assert front_data["voter_key"] == "GMMMR80070501M100"
     assert front_data["curp"] == "GOVM800705MCLMLR01"
     assert front_data["birth_date"] == "05/07/1980"
@@ -190,6 +199,9 @@ GOMEZ<VELAZQUEZ<<MARGARITA<<<<"""
     assert back_data["cic"] == "1382528441"
     assert back_data["ocr_code"] == "3904033366874"
     assert back_data["name"] == "GOMEZ VELAZQUEZ MARGARITA"
+    assert back_data["paternal_surname"] == "GOMEZ"
+    assert back_data["maternal_surname"] == "VELAZQUEZ"
+    assert back_data["given_names"] == "MARGARITA"
 
 
 def test_noisy_back_mrz_recovers_cic_and_ocr():
@@ -249,7 +261,11 @@ def test_separate_front_regions_recover_requested_fields(monkeypatch):
     data, _raw = extract_image(stream.getvalue(), side="front")
 
     assert data["name"] == "MONTOYA SALMON CHRISTOPHER LENIEL"
+    assert data["paternal_surname"] == "MONTOYA"
+    assert data["maternal_surname"] == "SALMON"
+    assert data["given_names"] == "CHRISTOPHER LENIEL"
     assert data["address"] == "C BENJAMIN DE LA MORA 112\nZONA CENTRO 20000\nAGUASCALIENTES AGS"
+    assert data["municipality"] == "AGUASCALIENTES"
     assert data["curp"] == "MOSC010426HASNLHA4"
 
 
@@ -277,8 +293,12 @@ CURP MOSC010426HASNLHA4""",
     data, _raw = extract_image(stream.getvalue(), side="front")
 
     assert data["name"] == "MONTOYA SALMON CHRISTOPHER LENIEL"
+    assert data["paternal_surname"] == "MONTOYA"
+    assert data["maternal_surname"] == "SALMON"
+    assert data["given_names"] == "CHRISTOPHER LENIEL"
     assert data["curp"] == "MOSC010426HASNLHA4"
     assert data["address"] == "C BENJAMIN DE LA MORA 112\nZONA CENTRO 20000\nAGUASCALIENTES, AGS"
+    assert data["municipality"] == "AGUASCALIENTES"
 
 
 def test_front_document_corrects_noisy_labels_and_digits():
@@ -313,3 +333,128 @@ def test_front_regions_recover_noisy_small_fields():
     assert data["section"] == "4094"
     assert data["registration_year"] == "201903"
     assert data["valid_until"] == "2026-2036"
+
+
+def test_three_front_name_lines_keep_ine_order_and_compound_given_names():
+    data = parse_ine_text("""NOMBRE
+MENDOZA
+RUIZ
+ANA MARIA ISABEL
+DOMICILIO
+CALLE FICTICIA 10
+JESUS MARIA, AGS
+CURP MEXX900101MASXXX09""")
+
+    assert data["paternal_surname"] == "MENDOZA"
+    assert data["maternal_surname"] == "RUIZ"
+    assert data["given_names"] == "ANA MARIA ISABEL"
+    assert data["name"] == "MENDOZA RUIZ ANA MARIA ISABEL"
+    assert data["municipality"] == "JESÚS MARÍA"
+
+
+def test_front_name_without_maternal_surname_keeps_that_field_empty():
+    data = parse_ine_text("""NOMBRE
+MENDOZA
+ANA MARIA
+DOMICILIO
+CALLE FICTICIA 10
+CALVILLO, AGS""")
+
+    assert data["paternal_surname"] == "MENDOZA"
+    assert data["maternal_surname"] == ""
+    assert data["given_names"] == "ANA MARIA"
+    assert data["name"] == "MENDOZA ANA MARIA"
+
+
+def test_flattened_legacy_name_is_not_split_by_guessing():
+    data = parse_ine_text("""NOMBRE MENDOZA RUIZ ANA MARIA
+DOMICILIO CALLE FICTICIA 10""")
+
+    assert data["name"] == "MENDOZA RUIZ ANA MARIA"
+    assert data["paternal_surname"] == ""
+    assert data["maternal_surname"] == ""
+    assert data["given_names"] == ""
+
+
+def test_mrz_splits_two_surnames_and_compound_given_names():
+    data = parse_back_mrz("""IDMEX1234567890<<1234567890123
+MENDOZA<RUIZ<<ANA<MARIA<<<<""")
+
+    assert data["paternal_surname"] == "MENDOZA"
+    assert data["maternal_surname"] == "RUIZ"
+    assert data["given_names"] == "ANA MARIA"
+    assert data["name"] == "MENDOZA RUIZ ANA MARIA"
+
+
+def test_mrz_allows_missing_maternal_surname():
+    data = parse_back_mrz("MENDOZA<<ANA<MARIA<<<<")
+
+    assert data["paternal_surname"] == "MENDOZA"
+    assert data["maternal_surname"] == ""
+    assert data["given_names"] == "ANA MARIA"
+
+
+def test_mrz_does_not_guess_when_surname_fragments_are_ambiguous():
+    data = parse_back_mrz("DE<LA<CRUZ<<ANA<MARIA<<<<")
+
+    assert data["name"] == "DE LA CRUZ ANA MARIA"
+    assert data["paternal_surname"] == ""
+    assert data["maternal_surname"] == ""
+    assert data["given_names"] == "ANA MARIA"
+
+
+@pytest.mark.parametrize(("ocr_name", "canonical"), [
+    ("AGUASCALIENTES", "AGUASCALIENTES"),
+    ("ASIENTOS", "ASIENTOS"),
+    ("CALVILLO", "CALVILLO"),
+    ("COSIO", "COSÍO"),
+    ("EL LLANO", "EL LLANO"),
+    ("JESUS MARIA", "JESÚS MARÍA"),
+    ("PABELLON DE ARTEAGA", "PABELLÓN DE ARTEAGA"),
+    ("RINCON DE ROMOS", "RINCÓN DE ROMOS"),
+    ("SAN FRANCISCO DE LOS ROMO", "SAN FRANCISCO DE LOS ROMO"),
+    ("SAN JOSE DE GRACIA", "SAN JOSÉ DE GRACIA"),
+    ("TEPEZALA", "TEPEZALÁ"),
+])
+def test_all_aguascalientes_municipalities_match_without_accents(
+    ocr_name, canonical,
+):
+    data = parse_ine_text(f"""DOMICILIO
+CALLE FICTICIA 10
+{ocr_name}, AGS""")
+
+    assert data["municipality"] == canonical
+
+
+def test_municipality_name_does_not_replace_municipality_code():
+    data = parse_ine_text("""DOMICILIO
+CALLE FICTICIA 10
+RINCON DE ROMOS, AGS
+MUNICIPIO 007""")
+
+    assert data["municipality"] == "RINCÓN DE ROMOS"
+    assert data["municipality_code"] == "007"
+
+
+def test_unknown_municipality_is_not_invented():
+    data = sanitize_extracted({
+        "address": "CALLE FICTICIA 10\nMUNICIPIO DESCONOCIDO",
+        "municipality": "OTRO LUGAR",
+    })
+
+    assert data["municipality"] == ""
+
+
+def test_new_identity_fields_are_sanitized_and_rebuild_legacy_name():
+    data = sanitize_extracted({
+        "given_names": "AN@A / MARÍA 123",
+        "paternal_surname": "MEND0ZA",
+        "maternal_surname": "RU|IZ",
+        "municipality": "san jose de gracia",
+    })
+
+    assert data["given_names"] == "ANA MARÍA"
+    assert data["paternal_surname"] == "MENDZA"
+    assert data["maternal_surname"] == "RU IZ"
+    assert data["name"] == "MENDZA RU IZ ANA MARÍA"
+    assert data["municipality"] == "SAN JOSÉ DE GRACIA"

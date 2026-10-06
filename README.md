@@ -1,6 +1,6 @@
 # DIF · Captura Apoyos (MVP)
 
-Aplicación web móvil/escritorio para fotografiar o subir el frente de una INE, proponer nombre completo, CURP y dirección con RapidOCR y Tesseract como respaldo, agregar teléfono y líder manualmente, detectar coincidencias y exportar registros a Excel.
+Aplicación web móvil/escritorio para fotografiar o subir el frente de una INE, proponer nombre(s), apellidos, CURP y municipio con RapidOCR y Tesseract como respaldo, agregar teléfono, líder y tipo de apoyo, detectar coincidencias y exportar registros a Excel.
 
 ## Alcance y decisiones de privacidad
 
@@ -9,8 +9,10 @@ Aplicación web móvil/escritorio para fotografiar o subir el frente de una INE,
 - CURP y número de teléfono activan la alerta de posible duplicado.
 - Las imágenes admitidas son JPG, PNG y WEBP, con límite configurable (8 MB por defecto).
 - Las cookies de sesión son `HttpOnly` y `SameSite=Lax`; en Railway debe activarse `COOKIE_SECURE=true`.
-- La exportación requiere una sesión autenticada y se entrega con `Cache-Control: no-store`.
-- Es un MVP con una cuenta administrativa configurada por variables. Para producción ampliada conviene integrar identidad institucional, roles, bitácora de accesos, cifrado a nivel de campo y política de retención.
+- La exportación requiere el rol `superadmin` y se entrega con `Cache-Control: no-store`.
+- Los usuarios y roles se guardan en la base. La cuenta de las variables `ADMIN_EMAIL` y `ADMIN_PASSWORD` se importa una sola vez como primer `superadmin` cuando la tabla de usuarios está vacía.
+- El rol `capturista` solo puede leer la foto, revisar y guardar. No puede listar registros, exportar, eliminar ni administrar usuarios o catálogos.
+- El rol `superadmin` puede consultar, exportar, eliminar registros, administrar usuarios y mantener el catálogo de tipos de apoyo.
 
 Antes de usar datos reales, publique el aviso de privacidad correspondiente, documente finalidad/base legal, limite accesos, capacite operadores y defina retención y eliminación conforme a las obligaciones aplicables. No coloque documentos reales en pruebas ni repositorios.
 
@@ -47,11 +49,16 @@ Abra `http://localhost:8000`.
 
 Las tablas se crean en el arranque para simplificar el MVP. Antes de evolucionar el esquema en producción, incorpore Alembic y copias de seguridad administradas.
 
-## Entrega para IIS y SQL Server
+## Actualización en IIS y SQL Server del DIF
 
-La carpeta `deploy/windows-iis` contiene `web.config`, instalador de PowerShell, scripts para SSMS, verificación e instrucciones para Windows Server. El paquete admite autenticación integrada de Windows o una cuenta SQL dedicada mediante ODBC Driver 18. SSMS administra SQL Server, pero no sustituye al motor de base de datos.
+La entrega v2 está en `deploy/windows-iis-v2` y está separada en dos carpetas:
 
-Para entregar al DIF, copie el código sin `.git`, `.venv`, cachés, bases de prueba ni `.env`; después coloque los archivos de `deploy/windows-iis` en la raíz del paquete. Consulte `deploy/windows-iis/LEEME_PRIMERO.md` antes de instalar. La entrega de código no incluye ni recupera los datos que existieran en Railway.
+1. `01_BASE_DATOS_SQLSERVER`: scripts aditivos para ejecutar en SSMS sobre `CapturaApoyosDIF`, con precomprobación, respaldo, migración y verificación. Conserva `name`, `address` y todos los registros anteriores.
+2. `02_APLICATIVO_IIS`: recopilador seguro de la versión actualmente instalada, actualizador para Windows Server 2022/IIS 10 y reversión de código.
+
+Lea primero `deploy/windows-iis-v2/LEEME_PRIMERO.md`. El actualizador preserva `.env`, `.venv`, `web.config`, datos, registros y respaldos; detiene únicamente el pool `CapturaApoyosDIF`. No ejecuta `iisreset`, no cambia dominio, bindings, puertos ni certificado.
+
+Como el servidor contiene cambios manuales posteriores al repositorio, primero debe ejecutarse `RECOPILAR_VERSION_ACTUAL.ps1` y fusionarse esa copia antes de publicar. Esta protección evita reemplazar una versión que hoy funciona.
 
 ## Desarrollo y pruebas
 

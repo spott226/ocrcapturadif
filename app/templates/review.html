@@ -1,8 +1,36 @@
-{% extends "base.html" %}{% block content %}<section class="card"><p class="eyebrow">Paso 2 de 2</p><h1>Revise y complete</h1><p class="muted">Compare los datos leídos con la INE y agregue teléfono y líder.</p>{% if error %}<div class="alert">{{ error }}</div>{% endif %}{% if duplicates %}<div class="duplicates"><strong>Coincidencias encontradas</strong>{% for p in duplicates %}<p>{{ p.name }} · {{ p.curp or p.phone }}</p>{% endfor %}</div>{% endif %}
-<form method="post" action="/registros" class="form-grid"><input type="hidden" name="csrf" value="{{ csrf }}">
-<label class="wide">Nombre completo<input name="name" value="{{ data.name }}" maxlength="180" required></label>
-<label>CURP<input name="curp" value="{{ data.curp }}" maxlength="18" pattern="[A-Za-z]{4}[0-9]{6}[HhMm][A-Za-z]{5}[A-Za-z0-9][0-9]"></label>
-<label>Número de teléfono<input name="phone" value="{{ data.phone }}" maxlength="10" inputmode="tel" pattern="[0-9]{10}" placeholder="10 dígitos"></label>
-<label class="wide">Dirección<textarea name="address" maxlength="500" rows="3">{{ data.address }}</textarea></label>
-<label class="wide">Líder<input name="leader" value="{{ data.leader }}" maxlength="180" placeholder="Nombre del líder"></label>
-<div class="actions wide"><a href="/" class="button ghost">Cancelar</a><button>Confirmar y guardar</button></div></form></section>{% endblock %}
+{% extends "base.html" %}
+{% block content %}
+<section class="card">
+  <p class="eyebrow">Paso 2 de 2</p>
+  <h1>Revise y complete</h1>
+  <p class="muted">El OCR propone los datos. Compare cada campo con la INE antes de guardar.</p>
+  {% if error %}<div class="alert">{{ error }}</div>{% endif %}
+  {% if duplicates and user.is_superadmin %}
+  <div class="duplicates"><strong>Coincidencias encontradas</strong>{% for p in duplicates %}<p>{{ p.display_name }} · {{ p.curp or p.phone }}</p>{% endfor %}</div>
+  {% endif %}
+  {% if not support_types %}<div class="alert">No hay un tipo de apoyo activo. El superadministrador debe configurar el catálogo antes de guardar.</div>{% endif %}
+
+  <form method="post" action="/registros" class="form-grid">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <label>Nombre(s)<input name="given_names" value="{{ data.given_names or '' }}" maxlength="120" required></label>
+    <label>Apellido paterno<input name="paternal_surname" value="{{ data.paternal_surname or '' }}" maxlength="80" required></label>
+    <label>Apellido materno <small>(opcional)</small><input name="maternal_surname" value="{{ data.maternal_surname or '' }}" maxlength="80"></label>
+    <label>CURP<input name="curp" value="{{ data.curp or '' }}" minlength="18" maxlength="18" pattern="[A-Za-z]{4}[0-9]{6}[HhMm][A-Za-z]{5}[A-Za-z0-9][0-9]" required></label>
+    <label>Municipio
+      <select name="municipality" required>
+        <option value="">Seleccione…</option>
+        {% for item in municipalities %}<option value="{{ item }}" {% if data.municipality == item %}selected{% endif %}>{{ item }}</option>{% endfor %}
+      </select>
+    </label>
+    <label>Tipo de apoyo
+      <select name="support_type_id" required>
+        <option value="">Seleccione…</option>
+        {% for item in support_types %}<option value="{{ item.id }}" {% if data.support_type_id|string == item.id|string %}selected{% endif %}>{{ item.name }}</option>{% endfor %}
+      </select>
+    </label>
+    <label>Número de teléfono<input name="phone" value="{{ data.phone or '' }}" maxlength="10" inputmode="tel" pattern="[0-9]{10}" placeholder="10 dígitos"></label>
+    <label>Líder<input name="leader" value="{{ data.leader or '' }}" maxlength="180" placeholder="Nombre del líder"></label>
+    <div class="actions wide"><a href="/" class="button ghost">Cancelar</a><button {% if not support_types %}disabled{% endif %}>Confirmar y guardar</button></div>
+  </form>
+</section>
+{% endblock %}

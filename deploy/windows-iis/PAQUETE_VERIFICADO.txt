@@ -7,6 +7,7 @@ Incluye:
 - Compatibilidad con Microsoft SQL Server mediante ODBC Driver 18.
 - Script de creación para SQL Server Management Studio.
 - Instalador y verificador para Windows Server.
+- Detección previa de Microsoft Visual C++ Redistributable v14 x64, sin descarga ni instalación automática.
 - Importador de respaldos Excel.
 - Pruebas automatizadas con datos ficticios.
 

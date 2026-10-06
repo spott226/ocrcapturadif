@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}Tipos de apoyo · Captura Apoyos{% endblock %}
+{% block content %}
+<section class="hero compact-hero"><div><p class="eyebrow">Administración</p><h1>Tipos de apoyo</h1><p>El código queda fijo; el nombre, orden y estado sí pueden actualizarse.</p></div><a class="button ghost" href="/">Volver a capturas</a></section>
+{% if error %}<div class="alert">{{ error }}</div>{% endif %}
+{% if request.query_params.get('creado') %}<div class="success">Tipo de apoyo agregado.</div>{% endif %}
+{% if request.query_params.get('actualizado') %}<div class="success">Tipo de apoyo actualizado.</div>{% endif %}
+
+<section class="card">
+  <h2>Agregar tipo de apoyo</h2>
+  <form method="post" action="/admin/tipos-apoyo" class="form-grid">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <label>Código estable<input name="code" maxlength="50" pattern="[A-Za-z0-9_-]+" placeholder="DESPENSA" required></label>
+    <label>Orden<input type="number" name="sort_order" value="0" min="-9999" max="9999"></label>
+    <label class="wide">Nombre visible<input name="name" maxlength="180" placeholder="Apoyo alimentario" required></label>
+    <div class="actions wide"><span></span><button>Agregar al catálogo</button></div>
+  </form>
+</section>
+
+<section class="card">
+  <h2>Catálogo</h2>
+  <div class="admin-list">
+    {% for item in support_types %}
+    <form method="post" action="/admin/tipos-apoyo/{{ item.id }}" class="admin-item catalog-item">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <div class="admin-summary"><strong>{{ item.code }}</strong><span class="status {{ 'status-active' if item.active else 'status-inactive' }}">{{ 'Activo' if item.active else 'Inactivo' }}</span></div>
+      <label>Nombre<input name="name" value="{{ item.name }}" maxlength="180" required></label>
+      <label>Orden<input type="number" name="sort_order" value="{{ item.sort_order }}" min="-9999" max="9999"></label>
+      <label class="check-label"><input type="checkbox" name="active" value="1" {% if item.active %}checked{% endif %}> Disponible para nuevas capturas</label>
+      <button>Guardar cambios</button>
+    </form>
+    {% else %}<div class="empty">El catálogo está vacío.</div>{% endfor %}
+  </div>
+</section>
+{% endblock %}

@@ -1,4 +1,5 @@
 import re
+import unicodedata
 from dataclasses import dataclass, asdict
 from datetime import datetime
 from difflib import SequenceMatcher
@@ -13,7 +14,11 @@ import pytesseract
 @dataclass
 class Extracted:
     name: str = ""
+    given_names: str = ""
+    paternal_surname: str = ""
+    maternal_surname: str = ""
     address: str = ""
+    municipality: str = ""
     curp: str = ""
     voter_key: str = ""
     birth_date: str = ""
@@ -57,19 +62,115 @@ def _safe_rapid_ocr(image: Image.Image) -> str:
     return "\n".join(main_lines + deferred_lines)
 
 
+AGUASCALIENTES_MUNICIPALITIES = {
+    "AGUASCALIENTES": "AGUASCALIENTES",
+    "ASIENTOS": "ASIENTOS",
+    "CALVILLO": "CALVILLO",
+    "COSIO": "COSÍO",
+    "EL LLANO": "EL LLANO",
+    "JESUS MARIA": "JESÚS MARÍA",
+    "PABELLON DE ARTEAGA": "PABELLÓN DE ARTEAGA",
+    "RINCON DE ROMOS": "RINCÓN DE ROMOS",
+    "SAN FRANCISCO DE LOS ROMO": "SAN FRANCISCO DE LOS ROMO",
+    "SAN JOSE DE GRACIA": "SAN JOSÉ DE GRACIA",
+    "TEPEZALA": "TEPEZALÁ",
+}
+
+
+def _fold_accents(value: str) -> str:
+    return "".join(
+        character
+        for character in unicodedata.normalize("NFD", str(value or "").upper())
+        if unicodedata.category(character) != "Mn"
+    )
+
+
+def _extract_aguascalientes_municipality(*sources: str) -> str:
+    """Devuelve un municipio solo cuando aparece como nombre completo."""
+    for source in sources:
+        # La localidad suele estar en el último renglón del domicilio. Revisar
+        # de abajo hacia arriba evita tomar como municipio una calle homónima.
+        for line in reversed(str(source or "").splitlines()):
+            folded = _fold_accents(line)
+            matches = {
+                canonical
+                for searchable, canonical in AGUASCALIENTES_MUNICIPALITIES.items()
+                if re.search(rf"(?<![A-Z]){re.escape(searchable)}(?![A-Z])", folded)
+            }
+            # "Aguascalientes" también puede ser el estado. Si aparece otro
+            # municipio en el mismo renglón, ese nombre específico tiene prioridad.
+            specific = matches - {"AGUASCALIENTES"}
+            if len(specific) == 1:
+                return specific.pop()
+            if len(specific) > 1:
+                return ""
+            if matches == {"AGUASCALIENTES"}:
+                return "AGUASCALIENTES"
+    return ""
+
+
+def _clean_person_value(value: str, maximum: int, minimum_letters: int = 2) -> str:
+    cleaned = normalize(value).replace("\n", " ")
+    cleaned = re.split(
+        r"\b(?:DOMICILIO|CURP|CLAVE DE ELECTOR|FECHA DE NACIMIENTO|SECCI[ÓO]N|VIGENCIA)\b",
+        cleaned,
+    )[0]
+    cleaned = re.sub(r"[/|]+", " ", cleaned)
+    cleaned = re.sub(r"[^A-ZÁÉÍÓÚÜÑ' -]", "", cleaned)
+    cleaned = " ".join(word for word in cleaned.split() if word != "NOMBRE")
+    if len(re.sub(r"[^A-ZÁÉÍÓÚÜÑ]", "", cleaned)) < minimum_letters:
+        return ""
+    return cleaned[:maximum]
+
+
+def _front_name_parts(lines: list[str]) -> tuple[str, str, str, str]:
+    """Interpreta únicamente renglones separados del bloque NOMBRE del frente."""
+    clean_lines = [
+        cleaned
+        for line in lines
+        if (cleaned := _clean_person_value(line, 120))
+    ]
+    legacy_name = " ".join(clean_lines)[:180]
+    if len(clean_lines) >= 3:
+        paternal = clean_lines[0]
+        maternal = clean_lines[1]
+        given = " ".join(clean_lines[2:])[:120]
+        return legacy_name, given, paternal, maternal
+    if len(clean_lines) == 2:
+        # En el bloque rotulado de la INE, si falta apellido materno quedan
+        # apellido paterno y nombre(s). No se aplica esta regla a texto plano.
+        return legacy_name, clean_lines[1], clean_lines[0], ""
+    return legacy_name, "", "", ""
+
+
+def _mrz_name_parts(compact_line: str) -> tuple[str, str, str, str]:
+    surnames_payload, given_payload = compact_line.split("<<", 1)
+    surnames = [part for part in surnames_payload.split("<") if part]
+    given = _clean_person_value(given_payload.replace("<", " "), 120)
+    legacy_name = " ".join(surnames + ([given] if given else []))[:180]
+    if len(surnames) == 1:
+        return legacy_name, given, surnames[0], ""
+    if len(surnames) == 2:
+        return legacy_name, given, surnames[0], surnames[1]
+    # Tres o más fragmentos no permiten distinguir con seguridad un apellido
+    # compuesto de dos apellidos. Se conserva el nombre legacy sin adivinar.
+    return legacy_name, given, "", ""
+
+
 def sanitize_extracted(fields: dict[str, str]) -> dict[str, str]:
     """Elimina ruido OCR y descarta valores que no cumplen el formato del campo."""
     clean = {key: str(value or "").strip() for key, value in fields.items()}
 
-    name = normalize(clean.get("name", "")).replace("\n", " ")
-    name = re.split(
-        r"\b(?:DOMICILIO|CURP|CLAVE DE ELECTOR|FECHA DE NACIMIENTO|SECCI[ÓO]N|VIGENCIA)\b",
-        name,
-    )[0]
-    name = re.sub(r"[/|]+", " ", name)
-    name = re.sub(r"[^A-ZÁÉÍÓÚÜÑ' -]", "", name)
-    name = " ".join(word for word in name.split() if word != "NOMBRE" and len(word) > 1)
-    clean["name"] = name[:180] if len(name.replace(" ", "")) >= 4 else ""
+    clean["given_names"] = _clean_person_value(clean.get("given_names", ""), 120)
+    clean["paternal_surname"] = _clean_person_value(clean.get("paternal_surname", ""), 80)
+    clean["maternal_surname"] = _clean_person_value(clean.get("maternal_surname", ""), 80)
+    clean["name"] = _clean_person_value(clean.get("name", ""), 180, minimum_letters=4)
+    if clean["paternal_surname"]:
+        clean["name"] = " ".join(filter(None, (
+            clean["paternal_surname"],
+            clean["maternal_surname"],
+            clean["given_names"],
+        )))[:180]
 
     address_lines = []
     for line in normalize(clean.get("address", "")).splitlines()[:3]:
@@ -79,6 +180,9 @@ def sanitize_extracted(fields: dict[str, str]) -> dict[str, str]:
         if len(line) >= 3 and line != "DOMICILIO":
             address_lines.append(line)
     clean["address"] = "\n".join(address_lines)[:500]
+    clean["municipality"] = _extract_aguascalientes_municipality(
+        clean.get("municipality", ""), clean["address"],
+    )
 
     compact_rules = {
         "curp": r"[A-Z]{4}\d{6}[HM][A-Z]{5}[A-Z0-9]\d",
@@ -193,7 +297,12 @@ def parse_ine_text(text: str) -> dict[str, str]:
                 if section_label.search(candidate):
                     break
                 candidates.append(candidate)
-            result.name = " ".join(candidates)[:180]
+            (
+                result.name,
+                result.given_names,
+                result.paternal_surname,
+                result.maternal_surname,
+            ) = _front_name_parts(candidates)
         if line.startswith("DOMICILIO"):
             tail = re.sub(r"^DOMICILIO\s*[:.]?\s*", "", line)
             address_lines = [tail] if tail else []
@@ -202,6 +311,8 @@ def parse_ine_text(text: str) -> dict[str, str]:
                     break
                 address_lines.append(candidate)
             result.address = "\n".join(address_lines)[:500]
+
+    result.municipality = _extract_aguascalientes_municipality(result.address, text)
 
     # En las INE nuevas, el reverso concentra CIC/OCR y el nombre en tres
     # renglones legibles por máquina, sin imprimir las etiquetas "CIC" u "OCR".
@@ -219,12 +330,12 @@ def parse_ine_text(text: str) -> dict[str, str]:
                 and not compact.startswith("IDMEX")
                 and re.fullmatch(r"[A-Z<]{8,}", compact)
             ):
-                surnames, given_names = compact.split("<<", 1)
-                candidate = " ".join(
-                    part for part in (surnames.replace("<", " "), given_names.replace("<", " "))
-                    if part.strip()
-                )
-                result.name = " ".join(candidate.split())[:180]
+                (
+                    result.name,
+                    result.given_names,
+                    result.paternal_surname,
+                    result.maternal_surname,
+                ) = _mrz_name_parts(compact)
                 break
     return asdict(result)
 
@@ -488,7 +599,12 @@ def _front_fields_from_lines(
         raw_parts.extend(readings)
         if line:
             name_lines.append(line)
-    result["name"] = " ".join(name_lines)
+    (
+        result["name"],
+        result["given_names"],
+        result["paternal_surname"],
+        result["maternal_surname"],
+    ) = _front_name_parts(name_lines)
     address_lines = []
     for box in FRONT_ADDRESS_LINES:
         line, readings = _best_line(images, box, letters_only=False)
@@ -736,10 +852,24 @@ def extract_image(data: bytes, side: str | None = None) -> tuple[dict[str, str],
         if side == "front":
             region_fields, region_text = _front_fields_from_lines(clean, threshold)
             raw_parts.append(region_text)
+            replace_region_name = (
+                bool(region_fields["name"])
+                and len(re.sub(r"\W", "", region_fields["name"]))
+                >= len(re.sub(r"\W", "", merged["name"]))
+            )
+            if replace_region_name:
+                for key in (
+                    "name", "given_names", "paternal_surname", "maternal_surname",
+                ):
+                    merged[key] = region_fields[key]
             for key, value in region_fields.items():
                 if not value:
                     continue
-                if key in {"name", "address"}:
+                if key == "name" or key in {
+                    "given_names", "paternal_surname", "maternal_surname",
+                }:
+                    continue
+                if key == "address":
                     if len(re.sub(r"\W", "", value)) >= len(re.sub(r"\W", "", merged[key])):
                         merged[key] = value
                 elif not merged[key]:

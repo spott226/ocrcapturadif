@@ -1,0 +1,38 @@
+CAPTURA APOYOS DIF V2 - ORDEN SIN RIESGO
+Windows Server 2022 / IIS 10.x / SQL Server
+
+NO EJECUTAR TODAVIA LA ACTUALIZACION DE IIS.
+El servidor tiene cambios manuales que no estan en el repositorio. Primero:
+
+1. SERVIDOR APLICATIVO
+   Copiar solamente la carpeta 02_APLICATIVO_IIS a una carpeta temporal.
+   Abrir Windows PowerShell como administrador y ejecutar:
+
+     Set-ExecutionPolicy -Scope Process Bypass -Force
+     .\RECOPILAR_VERSION_ACTUAL.ps1
+
+   Entregar el ZIP creado en C:\Users\Public\Documents al desarrollador. Ese ZIP no
+   incluye .env, datos, imagenes, respaldos ni credenciales.
+
+2. DESARROLLO
+   Fusionar la version recopilada con este codigo, ejecutar pruebas y colocar la huella
+   resultante en VERSION_BASE_SERVIDOR.sha256. Mientras diga PENDIENTE, el actualizador
+   se detiene antes de modificar IIS.
+
+3. SERVIDOR SQL
+   Seguir 01_BASE_DATOS_SQLSERVER\LEEME_BASE_DATOS.md. Orden:
+   00_PREVERIFICAR, respaldo verificado, 02_MIGRAR_ESQUEMA, catalogo y 04_VERIFICAR.
+
+4. SERVIDOR APLICATIVO
+   Seguir 02_APLICATIVO_IIS\LEEME_APLICATIVO.md y ejecutar ACTUALIZAR_IIS.ps1.
+   El proceso respalda el codigo, conserva la configuracion y reinicia solo el pool
+   CapturaApoyosDIF. No usa iisreset ni cambia dominio, bindings o certificado.
+
+5. PRUEBA DE ACEPTACION
+   Usar solamente documentos y datos ficticios. Confirmar:
+   - superadmin: ve, exporta, elimina y administra;
+   - capturista: captura y guarda, pero no ve registros ni exporta;
+   - fotos se procesan en memoria y no quedan almacenadas.
+
+Si cualquier verificacion marca error, detenerse. No usar -AceptarBaseDistinta como
+atajo; esa opcion solo procede despues de que Sistemas revise y fusione las diferencias.
