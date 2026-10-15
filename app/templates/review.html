@@ -31,7 +31,12 @@
       </select>
     </label>
     <label>Número de teléfono<input name="phone" value="{{ data.phone or '' }}" maxlength="10" inputmode="tel" pattern="[0-9]{10}" placeholder="10 dígitos"></label>
-    <label>Líder<input name="leader" value="{{ data.leader or '' }}" maxlength="180" placeholder="Nombre del líder"></label>
+    <label>Líder
+      <select name="leader" required>
+        <option value="">Seleccione…</option>
+        {% for leader in leaders %}<option value="{{ leader }}" {% if data.leader|default('', true)|lower == leader|lower %}selected{% endif %}>{{ leader }}</option>{% endfor %}
+      </select>
+    </label>
     <div class="actions wide"><a href="/" class="button ghost">Cancelar</a><button {% if not support_types %}disabled{% endif %}>Confirmar y guardar</button></div>
   </form>
 </section>

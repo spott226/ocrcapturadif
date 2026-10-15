@@ -70,7 +70,7 @@ def valid_record(csrf: str, support_type_id: int, **overrides):
         "cic": "1234567890",
         "ocr_code": "1234567890123",
         "phone": "4491234567",
-        "leader": "LIDER FICTICIO",
+        "leader": "Nalleli Luévano",
         "csrf": csrf,
     }
     data.update(overrides)
@@ -153,6 +153,7 @@ def test_superadmin_can_save_export_and_delete_fictitious_record():
             assert person.support_type_id == support_id
             assert person.cic == "1234567890"
             assert person.ocr_code == "1234567890123"
+            assert person.leader == "Nalleli Luévano"
             person_id = person.id
 
         exported = client.get("/exportar.xlsx")
@@ -193,6 +194,26 @@ def test_rejects_invalid_phone_length():
         )
         assert response.status_code == 200
         assert "El teléfono debe tener 10 dígitos" in response.text
+
+
+def test_leader_must_come_from_unique_catalog():
+    with TestClient(app) as client:
+        login(client)
+        support_id = create_support(client)
+        response = client.post(
+            "/registros",
+            data=valid_record(
+                csrf_from(client.get("/")),
+                support_id,
+                leader="LÍDER QUE NO EXISTE",
+            ),
+        )
+
+        assert response.status_code == 200
+        assert "Seleccione un líder del catálogo" in response.text
+        assert response.text.count(">Jorge Fabian Luévano Rodríguez</option>") == 1
+        with SessionLocal() as db:
+            assert db.scalar(select(Person.id)) is None
 
 
 def test_front_and_optional_back_are_merged_into_review(monkeypatch):

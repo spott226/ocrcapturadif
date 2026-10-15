@@ -45,6 +45,25 @@ MUNICIPALITIES = (
     "Tepezalá",
 )
 
+LEADERS = (
+    "Nalleli Luévano",
+    "Jose Guadalupe Barajas Luevanos",
+    "Seleste Monserrat Contreras Rodriguez",
+    "Ma. Olivia Mercedes González Rojas",
+    "Jimchauregi Gutiérrez Baez",
+    "Shelsie Yeraldine López Báez",
+    "Derek Legaspy Reyes Cervantes",
+    "Jorge Fabian Luévano Rodríguez",
+    "Brenda Nallely Ortiz Herrera",
+    "Nanci Nalleli Luévano Rico",
+    "Arturo Alejandro Álvarez Buenrostro",
+    "Gael Oziel Luévano Calvillo",
+    "Cristopher Yahvé Moreno Sánchez",
+    "Salma Dayana Ovalle Aguilar",
+    "Diana Montserrat Luevano Puentes",
+    "José Gustavo Díaz Contreras",
+)
+
 # These additions keep a database created by a previous release readable. The
 # deployment package also carries an audited SQL Server migration; this small
 # migration remains useful for local SQLite development and safe restarts.
@@ -256,6 +275,14 @@ def canonical_municipality(value: str) -> str:
     )
 
 
+def canonical_leader(value: str) -> str:
+    normalized = normalize_for_match(value)
+    return next(
+        (item for item in LEADERS if normalize_for_match(item) == normalized),
+        "",
+    )
+
+
 def split_ine_name(full_name: str) -> tuple[str, str, str]:
     """Use the INE front order: paternal, maternal, then one or more given names."""
     words = full_name.strip().upper().split()
@@ -283,6 +310,7 @@ def review_page(
         error=error,
         duplicates=duplicates or [],
         municipalities=MUNICIPALITIES,
+        leaders=LEADERS,
         support_types=active_support_types(db),
     )
 
@@ -538,7 +566,7 @@ def save(
     curp = curp.strip().upper()
     cic = re.sub(r"\D", "", cic)
     ocr_code = re.sub(r"\D", "", ocr_code)
-    leader = " ".join(leader.strip().upper().split())
+    selected_leader = canonical_leader(leader)
     phone = re.sub(r"\D", "", phone)
 
     selected_municipality = canonical_municipality(municipality)
@@ -563,7 +591,7 @@ def save(
         "cic": cic,
         "ocr_code": ocr_code,
         "phone": phone,
-        "leader": leader,
+        "leader": selected_leader or leader,
         "name": name,
         "address": address,
     }
@@ -575,6 +603,8 @@ def save(
         return review_page(request, db, data, error="Revise el OCR del reverso; debe tener entre 12 y 14 dígitos.")
     if phone and len(phone) != 10:
         return review_page(request, db, data, error="El teléfono debe tener 10 dígitos.")
+    if not selected_leader:
+        return review_page(request, db, data, error="Seleccione un líder del catálogo.")
     if not given_names or not paternal_surname:
         return review_page(request, db, data, error="Capture los nombres y el apellido paterno.")
     if not selected_municipality:
@@ -619,7 +649,7 @@ def save(
         cic=cic[:20],
         ocr_code=ocr_code[:20],
         phone=phone[:15],
-        leader=leader[:180],
+        leader=selected_leader[:180],
         created_by=user.email,
     )
     db.add(person)
