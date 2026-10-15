@@ -6,7 +6,7 @@ from types import SimpleNamespace
 import pytest
 from fastapi.testclient import TestClient
 from openpyxl import Workbook, load_workbook
-from sqlalchemy import select
+from sqlalchemy import inspect, select, text
 
 os.environ["DATABASE_URL"] = "sqlite:///./test.sqlite3"
 os.environ["SECRET_KEY"] = "test-secret-key-that-is-long-enough"
@@ -14,7 +14,7 @@ os.environ["ADMIN_EMAIL"] = "admin@example.test"
 os.environ["ADMIN_PASSWORD"] = "a-secure-test-password"
 
 from app.database import Base, SessionLocal, build_database_url, engine
-from app.main import app
+from app.main import app, migrate_early_v2_database
 from app.models import AppUser, Person, SupportType
 from tools.importar_excel import import_workbook
 
@@ -75,6 +75,28 @@ def valid_record(csrf: str, support_type_id: int, **overrides):
     }
     data.update(overrides)
     return data
+
+
+def test_migration_adds_form_access_when_last_login_already_exists():
+    AppUser.__table__.drop(engine)
+    with engine.begin() as connection:
+        connection.execute(text("""
+            CREATE TABLE app_users (
+                id INTEGER PRIMARY KEY,
+                email VARCHAR(254) NOT NULL,
+                password_hash VARCHAR(255) NOT NULL,
+                role VARCHAR(32) NOT NULL,
+                is_active BOOLEAN NOT NULL,
+                created_by VARCHAR(254) NOT NULL,
+                created_at DATETIME NOT NULL,
+                last_login_at DATETIME NULL
+            )
+        """))
+
+    migrate_early_v2_database()
+
+    columns = {column["name"] for column in inspect(engine).get_columns("app_users")}
+    assert "form_access" in columns
 
 
 def test_builds_sql_server_windows_auth_url_without_manual_password_encoding():

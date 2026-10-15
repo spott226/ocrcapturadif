@@ -155,9 +155,9 @@ def migrate_early_v2_database() -> None:
                     ))
         if "app_users" in tables:
             columns = {column["name"] for column in inspect(engine).get_columns("app_users")}
+            add_keyword = "ADD" if engine.dialect.name == "mssql" else "ADD COLUMN"
             if "last_login_at" not in columns:
                 type_sql = DateTime(timezone=True).compile(dialect=engine.dialect)
-                add_keyword = "ADD" if engine.dialect.name == "mssql" else "ADD COLUMN"
                 connection.execute(text(
                     f"ALTER TABLE app_users {add_keyword} last_login_at {type_sql} NULL"
                 ))
