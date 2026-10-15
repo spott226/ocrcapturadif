@@ -2,11 +2,12 @@
 
 Aplicación web móvil/escritorio para fotografiar o subir el frente y, opcionalmente, el reverso de una INE; propone nombre(s), apellidos, CURP, municipio, CIC y OCR con RapidOCR y Tesseract como respaldo, permite agregar teléfono, líder y tipo de apoyo, detecta coincidencias y exporta los registros a Excel.
 
-El superadministrador puede asignar por cuenta el acceso al capturador OCR y a formularios externos. Los capturistas solo ven los formularios autorizados; el acceso al OCR también se valida en el servidor.
+El superadministrador puede asignar por cuenta el acceso al capturador OCR y a los formularios internos Datos de estructura y Red de Apoyo 1x10. Los capturistas solo ven los formularios autorizados y cada formulario guarda sus respuestas para consulta y exportación administrativa.
 
 ## Alcance y decisiones de privacidad
 
-- Las imágenes se leen en memoria y **no se guardan** en disco ni en la base de datos.
+- En Captura de INE con OCR, las imágenes se leen en memoria y **no se guardan**.
+- En Datos de estructura, el frente y reverso solicitados sí se guardan dentro de la base de datos y solo el superadministrador puede descargarlos.
 - El texto OCR crudo tampoco se persiste. Solo se guardan los campos confirmados por el operador.
 - CURP y número de teléfono activan la alerta de posible duplicado.
 - Las imágenes admitidas son JPG, PNG y WEBP, con límite configurable (8 MB por defecto).

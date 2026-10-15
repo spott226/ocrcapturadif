@@ -38,7 +38,7 @@
         {% for leader in leaders %}<option value="{{ leader }}" {% if data.leader|default('', true)|lower == leader|lower %}selected{% endif %}>{{ leader }}</option>{% endfor %}
       </select>
     </label>
-    <div class="actions wide"><a href="/" class="button ghost">Cancelar</a><button {% if not support_types %}disabled{% endif %}>Confirmar y guardar</button></div>
+    <div class="actions wide"><a href="/captura" class="button ghost">Cancelar</a><button {% if not support_types %}disabled{% endif %}>Confirmar y guardar</button></div>
   </form>
 </section>
 {% endblock %}

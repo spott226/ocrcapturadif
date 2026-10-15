@@ -2,12 +2,12 @@ import logging
 import re
 import unicodedata
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from io import BytesIO
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, Request, UploadFile
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from openpyxl import Workbook
@@ -19,7 +19,7 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from .config import get_settings
 from .database import Base, SessionLocal, engine, get_db
-from .models import AppUser, Person, SupportType
+from .models import AppUser, Person, StructureSubmission, SupportNetworkSubmission, SupportType
 from .ocr import extract_image
 from .security import csrf_token, password_hash, valid_csrf, verify_password
 
@@ -39,25 +39,34 @@ FORM_DEFINITIONS = (
         "code": FORM_OCR,
         "name": "Captura de INE con OCR",
         "description": "Fotografíe la INE, revise los datos detectados y guarde la captura.",
-        "url": "#captura-ine",
+        "url": "/captura",
         "external": False,
     },
     {
         "code": FORM_GOOGLE_1,
         "name": "Datos de estructura",
-        "description": "Información relevante sobre los integrantes del equipo. Google solicitará iniciar sesión para cargar archivos.",
-        "url": "https://docs.google.com/forms/d/e/1FAIpQLSf6kFqGT2GNUljAA50Iy6sRFqj3dxqNlUVW8wPxITvznZ4wFQ/viewform?usp=header",
-        "external": True,
+        "description": "Información relevante sobre los integrantes del equipo, con frente y reverso de INE.",
+        "url": "/formularios/datos-estructura",
+        "external": False,
     },
     {
         "code": FORM_RED_1X10,
         "name": "Red De Apoyo 1x10",
         "description": "Formulario de registro de la red de apoyo.",
-        "url": "https://docs.google.com/forms/d/e/1FAIpQLSc5SYohuV3ieIwXCwquvlfuRKnG3d4m51xDoYnN1vFqc-somA/viewform?usp=header",
-        "external": True,
+        "url": "/formularios/red-apoyo",
+        "external": False,
     },
 )
 VALID_FORM_CODES = {item["code"] for item in FORM_DEFINITIONS}
+
+NETWORK_LEADERS = (
+    "Arath Gomez", "Yeraldine Baez", "Alejandro Santillan", "Arturo Buenrostro",
+    "Bladimir Hernandez", "Cesar", "Christopher Sanchez", "Jazmin",
+    "Jimchauregy Baez", "Montserrat (fotografa)", "Mario Gutierrez", "Nayeli Luevano",
+    "Olivia Gonzalez", "Paloma", "Pedro", "Raudel Calvillo",
+    "Seleste Montserrat (Hacienda)", "Yordin Cervantes", "Salma Ovalle",
+    "Chico de Luna", "Derek Legaspy", "Ilse", "Fabian", "Gael Luevano",
+)
 
 MUNICIPALITIES = (
     "Aguascalientes",
@@ -239,11 +248,14 @@ async def privacy_headers(request: Request, call_next):
 
 
 def page(request: Request, name: str, **context):
+    user = getattr(request.state, "current_user", None)
     context.update(
         request=request,
-        user=getattr(request.state, "current_user", None),
+        user=user,
         csrf=csrf_token(request.session),
     )
+    if user and "can_use_ocr" not in context:
+        context["can_use_ocr"] = FORM_OCR in allowed_form_codes(user)
     return templates.TemplateResponse(request, name, context)
 
 
@@ -460,24 +472,24 @@ def change_password(
 
 
 @app.get("/", response_class=HTMLResponse)
-def home(request: Request, pagina: int = Query(1, ge=1), db: Session = Depends(get_db)):
+def home(request: Request, db: Session = Depends(get_db)):
     user = require_user(request, db)
-    supports = active_support_types(db)
-    available_forms = forms_for_user(user)
-    can_use_ocr = FORM_OCR in allowed_form_codes(user)
-    if not user.is_superadmin:
-        return page(
-            request,
-            "index.html",
-            people=[],
-            total=0,
-            current_page=1,
-            total_pages=1,
-            support_types=supports,
-            available_forms=available_forms,
-            can_use_ocr=can_use_ocr,
-        )
+    return page(request, "index.html", available_forms=forms_for_user(user))
 
+
+@app.get("/captura", response_class=HTMLResponse)
+def capture_page(request: Request, db: Session = Depends(get_db)):
+    user = require_form_access(request, db, FORM_OCR)
+    return page(request, "capture.html", user=user, support_types=active_support_types(db))
+
+
+@app.get("/beneficiarios", response_class=HTMLResponse)
+def beneficiaries_page(
+    request: Request,
+    pagina: int = Query(1, ge=1),
+    db: Session = Depends(get_db),
+):
+    require_superadmin(request, db)
     page_size = 10
     total = db.scalar(select(func.count(Person.id))) or 0
     total_pages = max(1, (total + page_size - 1) // page_size)
@@ -490,14 +502,11 @@ def home(request: Request, pagina: int = Query(1, ge=1), db: Session = Depends(g
     ).unique().all()
     return page(
         request,
-        "index.html",
+        "beneficiaries.html",
         people=people,
         total=total,
         current_page=current_page,
         total_pages=total_pages,
-        support_types=supports,
-        available_forms=available_forms,
-        can_use_ocr=can_use_ocr,
     )
 
 
@@ -510,6 +519,183 @@ async def read_upload(upload: UploadFile) -> bytes:
     if len(data) > settings.max_upload_mb * 1024 * 1024:
         raise HTTPException(413, "La imagen excede el tamaño permitido")
     return data
+
+
+@app.get("/formularios/datos-estructura", response_class=HTMLResponse)
+def structure_form(request: Request, db: Session = Depends(get_db)):
+    require_form_access(request, db, FORM_GOOGLE_1)
+    return page(request, "structure_form.html")
+
+
+@app.post("/formularios/datos-estructura", response_class=HTMLResponse)
+async def save_structure_form(
+    request: Request,
+    email: str = Form(...),
+    full_name: str = Form(...),
+    birth_date: date = Form(...),
+    electoral_section: str = Form(...),
+    phone: str = Form(...),
+    facebook_profile: str = Form(...),
+    education: str = Form(...),
+    age: int = Form(...),
+    workplace: str = Form(...),
+    front: UploadFile = File(...),
+    back: UploadFile = File(...),
+    csrf: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    user = require_form_access(request, db, FORM_GOOGLE_1)
+    require_csrf(request, csrf)
+    normalized_email = email.strip().casefold()
+    normalized_phone = re.sub(r"\D", "", phone)
+    normalized_section = re.sub(r"\D", "", electoral_section)
+    if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", normalized_email):
+        raise HTTPException(400, "Capture un correo válido")
+    if not full_name.strip() or not education.strip() or not workplace.strip():
+        raise HTTPException(400, "Complete todos los campos obligatorios")
+    if len(normalized_phone) != 10:
+        raise HTTPException(400, "El número telefónico debe tener 10 dígitos")
+    if not normalized_section or len(normalized_section) > 10:
+        raise HTTPException(400, "Capture una sección electoral válida")
+    if age < 15 or age > 120:
+        raise HTTPException(400, "Capture una edad válida")
+    front_bytes = await read_upload(front)
+    back_bytes = await read_upload(back)
+    db.add(StructureSubmission(
+        email=normalized_email,
+        full_name=full_name.strip()[:220],
+        birth_date=birth_date,
+        electoral_section=normalized_section,
+        phone=normalized_phone,
+        facebook_profile=facebook_profile.strip()[:300],
+        education=education.strip()[:220],
+        age=age,
+        workplace=workplace.strip()[:300],
+        front_image=front_bytes,
+        front_mime=front.content_type or "image/jpeg",
+        back_image=back_bytes,
+        back_mime=back.content_type or "image/jpeg",
+        created_by=user.email,
+    ))
+    db.commit()
+    return RedirectResponse("/formularios/datos-estructura?guardado=1", status_code=303)
+
+
+@app.get("/formularios/red-apoyo", response_class=HTMLResponse)
+def support_network_form(request: Request, db: Session = Depends(get_db)):
+    require_form_access(request, db, FORM_RED_1X10)
+    return page(request, "support_network_form.html", network_leaders=NETWORK_LEADERS)
+
+
+@app.post("/formularios/red-apoyo", response_class=HTMLResponse)
+def save_support_network_form(
+    request: Request,
+    leadership: str = Form(...),
+    person_1: str = Form(...), person_2: str = Form(...),
+    person_3: str = Form(...), person_4: str = Form(...),
+    person_5: str = Form(...), person_6: str = Form(...),
+    person_7: str = Form(...), person_8: str = Form(...),
+    person_9: str = Form(...), person_10: str = Form(...),
+    csrf: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    user = require_form_access(request, db, FORM_RED_1X10)
+    require_csrf(request, csrf)
+    if leadership not in NETWORK_LEADERS:
+        raise HTTPException(400, "Seleccione un liderazgo válido")
+    people = [person_1, person_2, person_3, person_4, person_5,
+              person_6, person_7, person_8, person_9, person_10]
+    if any(not value.strip() for value in people):
+        raise HTTPException(400, "Capture las diez personas de la red")
+    db.add(SupportNetworkSubmission(
+        leadership=leadership,
+        **{f"person_{index}": value.strip()[:300] for index, value in enumerate(people, 1)},
+        created_by=user.email,
+    ))
+    db.commit()
+    return RedirectResponse("/formularios/red-apoyo?guardado=1", status_code=303)
+
+
+@app.get("/admin/formularios/datos-estructura", response_class=HTMLResponse)
+def structure_records(request: Request, db: Session = Depends(get_db)):
+    require_superadmin(request, db)
+    rows = db.scalars(select(StructureSubmission).order_by(StructureSubmission.created_at.desc())).all()
+    return page(request, "structure_records.html", rows=rows)
+
+
+@app.get("/admin/formularios/datos-estructura/{record_id}/{side}")
+def structure_image(record_id: int, side: str, request: Request, db: Session = Depends(get_db)):
+    require_superadmin(request, db)
+    row = db.get(StructureSubmission, record_id)
+    if not row or side not in {"frente", "reverso"}:
+        raise HTTPException(404, "Imagen no encontrada")
+    content = row.front_image if side == "frente" else row.back_image
+    media_type = row.front_mime if side == "frente" else row.back_mime
+    extension = {"image/png": "png", "image/webp": "webp"}.get(media_type, "jpg")
+    return Response(
+        content=content,
+        media_type=media_type,
+        headers={"Content-Disposition": f'attachment; filename="estructura-{record_id}-{side}.{extension}"'},
+    )
+
+
+@app.get("/admin/formularios/datos-estructura.xlsx")
+def export_structure(request: Request, db: Session = Depends(get_db)):
+    require_superadmin(request, db)
+    rows = db.scalars(select(StructureSubmission).order_by(StructureSubmission.created_at)).all()
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Datos de estructura"
+    ws.append(["ID", "Correo", "Nombre completo", "Fecha de nacimiento", "Sección electoral",
+               "Número telefónico", "Perfil de Facebook", "Carrera o nivel de estudios", "Edad",
+               "Dependencia y puesto", "Frente de INE", "Reverso de INE", "Capturó", "Fecha de captura"])
+    for row in rows:
+        base = str(request.base_url).rstrip("/")
+        ws.append([row.id, row.email, row.full_name, row.birth_date, row.electoral_section, row.phone,
+                   row.facebook_profile, row.education, row.age, row.workplace,
+                   f"{base}/admin/formularios/datos-estructura/{row.id}/frente",
+                   f"{base}/admin/formularios/datos-estructura/{row.id}/reverso",
+                   row.created_by, row.created_at.replace(tzinfo=None)])
+    return workbook_response(wb, "datos_estructura.xlsx")
+
+
+@app.get("/admin/formularios/red-apoyo", response_class=HTMLResponse)
+def support_network_records(request: Request, db: Session = Depends(get_db)):
+    require_superadmin(request, db)
+    rows = db.scalars(select(SupportNetworkSubmission).order_by(SupportNetworkSubmission.created_at.desc())).all()
+    return page(request, "support_network_records.html", rows=rows)
+
+
+@app.get("/admin/formularios/red-apoyo.xlsx")
+def export_support_network(request: Request, db: Session = Depends(get_db)):
+    require_superadmin(request, db)
+    rows = db.scalars(select(SupportNetworkSubmission).order_by(SupportNetworkSubmission.created_at)).all()
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Red de apoyo 1x10"
+    ws.append(["ID", "Liderazgo", *[f"Nombre y Facebook Persona {i}" for i in range(1, 11)],
+               "Capturó", "Fecha de captura"])
+    for row in rows:
+        ws.append([row.id, row.leadership, *[getattr(row, f"person_{i}") for i in range(1, 11)],
+                   row.created_by, row.created_at.replace(tzinfo=None)])
+    return workbook_response(wb, "red_apoyo_1x10.xlsx")
+
+
+def workbook_response(wb: Workbook, filename: str) -> StreamingResponse:
+    ws = wb.active
+    ws.freeze_panes = "A2"
+    for column in ws.columns:
+        ws.column_dimensions[column[0].column_letter].width = min(
+            max(len(str(cell.value or "")) for cell in column) + 2, 55
+        )
+    stream = BytesIO()
+    wb.save(stream)
+    stream.seek(0)
+    return StreamingResponse(
+        stream,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"', "Cache-Control": "no-store"},
+    )
 
 
 @app.post("/ocr", response_class=HTMLResponse)
@@ -719,7 +905,7 @@ def save(
     )
     db.add(person)
     db.commit()
-    return RedirectResponse("/?guardado=1", status_code=303)
+    return RedirectResponse("/captura?guardado=1", status_code=303)
 
 
 @app.post("/registros/{person_id}/eliminar")
@@ -736,7 +922,7 @@ def delete_record(
         raise HTTPException(404, "Registro no encontrado")
     db.delete(person)
     db.commit()
-    return RedirectResponse("/?eliminado=1", status_code=303)
+    return RedirectResponse("/beneficiarios?eliminado=1", status_code=303)
 
 
 @app.get("/exportar.xlsx")

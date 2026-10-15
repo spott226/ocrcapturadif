@@ -27,7 +27,10 @@ def main() -> int:
         from app.main import app
 
         inspector = inspect(engine)
-        required_tables = {"people", "support_types", "app_users"}
+        required_tables = {
+            "people", "support_types", "app_users",
+            "structure_submissions", "support_network_submissions",
+        }
         missing_tables = sorted(required_tables.difference(inspector.get_table_names()))
         if missing_tables:
             raise RuntimeError("faltan tablas: " + ", ".join(missing_tables))

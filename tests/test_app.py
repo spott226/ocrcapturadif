@@ -15,7 +15,7 @@ os.environ["ADMIN_PASSWORD"] = "a-secure-test-password"
 
 from app.database import Base, SessionLocal, build_database_url, engine
 from app.main import app, migrate_early_v2_database
-from app.models import AppUser, Person, SupportType
+from app.models import AppUser, Person, StructureSubmission, SupportNetworkSubmission, SupportType
 from tools.importar_excel import import_workbook
 
 
@@ -159,9 +159,10 @@ def test_superadmin_can_save_export_and_delete_fictitious_record():
             data=valid_record(csrf_from(client.get("/")), support_id),
         )
         assert saved.status_code == 200
-        assert "PERSONA FICTICIA PRUEBA" in saved.text
-        assert "Aguascalientes" in saved.text
-        assert "Apoyo alimentario" in saved.text
+        records = client.get("/beneficiarios")
+        assert "PERSONA FICTICIA PRUEBA" in records.text
+        assert "Aguascalientes" in records.text
+        assert "Apoyo alimentario" in records.text
 
         with SessionLocal() as db:
             person = db.scalar(select(Person).where(Person.curp == "PULA900101MDFRPN09"))
@@ -262,7 +263,7 @@ def test_front_and_optional_back_are_merged_into_review(monkeypatch):
     with TestClient(app) as client:
         login(client)
         create_support(client)
-        home = client.get("/")
+        home = client.get("/captura")
         assert 'name="front"' in home.text
         assert 'name="back"' in home.text
 
@@ -320,11 +321,11 @@ def test_records_are_paginated_ten_per_page():
             ])
             db.commit()
 
-        first_page = client.get("/")
-        assert "11 en total · Página 1 de 2" in first_page.text
+        first_page = client.get("/beneficiarios")
+        assert "11 registros en total" in first_page.text
         assert first_page.text.count('class="record-card"') == 10
-        second_page = client.get("/?pagina=2")
-        assert "11 en total · Página 2 de 2" in second_page.text
+        second_page = client.get("/beneficiarios?pagina=2")
+        assert "2 / 2" in second_page.text
         assert second_page.text.count('class="record-card"') == 1
 
 
@@ -416,9 +417,58 @@ def test_form_permissions_limit_each_capturista_and_update_immediately():
                 },
             )
             assert updated.status_code == 200
-            refreshed = capturista.get("/")
+            refreshed = capturista.get("/captura")
             assert 'name="front"' in refreshed.text
-            assert "Datos de estructura" in refreshed.text
+            assert "Datos de estructura" in capturista.get("/").text
+
+
+def test_internal_structure_form_stores_both_ine_images_and_exports():
+    with TestClient(app) as client:
+        login(client)
+        form = client.get("/formularios/datos-estructura")
+        saved = client.post(
+            "/formularios/datos-estructura",
+            data={
+                "email": "persona@example.test",
+                "full_name": "PERSONA DE PRUEBA",
+                "birth_date": "1990-01-01",
+                "electoral_section": "0028",
+                "phone": "4491234567",
+                "facebook_profile": "facebook.com/persona",
+                "education": "Licenciatura",
+                "age": "36",
+                "workplace": "Dependencia / Puesto",
+                "csrf": csrf_from(form),
+            },
+            files={
+                "front": ("frente.jpg", b"imagen-frente", "image/jpeg"),
+                "back": ("reverso.png", b"imagen-reverso", "image/png"),
+            },
+        )
+        assert saved.status_code == 200
+        with SessionLocal() as db:
+            row = db.scalar(select(StructureSubmission))
+            assert row.front_image == b"imagen-frente"
+            assert row.back_image == b"imagen-reverso"
+            row_id = row.id
+        assert client.get(f"/admin/formularios/datos-estructura/{row_id}/frente").content == b"imagen-frente"
+        assert client.get("/admin/formularios/datos-estructura.xlsx").status_code == 200
+
+
+def test_internal_support_network_uses_its_own_leadership_catalog_and_exports():
+    with TestClient(app) as client:
+        login(client)
+        form = client.get("/formularios/red-apoyo")
+        assert "Arath Gomez" in form.text
+        data = {"leadership": "Arath Gomez", "csrf": csrf_from(form)}
+        data.update({f"person_{number}": f"Persona {number} / Facebook" for number in range(1, 11)})
+        saved = client.post("/formularios/red-apoyo", data=data)
+        assert saved.status_code == 200
+        with SessionLocal() as db:
+            row = db.scalar(select(SupportNetworkSubmission))
+            assert row.leadership == "Arath Gomez"
+            assert row.person_10 == "Persona 10 / Facebook"
+        assert client.get("/admin/formularios/red-apoyo.xlsx").status_code == 200
 
 
 def test_superadmin_cannot_disable_or_demote_self():

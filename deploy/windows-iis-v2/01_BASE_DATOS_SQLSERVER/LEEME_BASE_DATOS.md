@@ -34,6 +34,8 @@ Debe ejecutarlo una persona autorizada sobre la base `CapturaApoyosDIF`.
   `municipality` y `support_type_id`.
 - Crea `dbo.support_types` para el catálogo de tipos de apoyo.
 - Crea `dbo.app_users` con roles `superadmin` y `capturista`.
+- Crea `dbo.structure_submissions` para Datos de estructura, incluidas ambas imágenes de INE.
+- Crea `dbo.support_network_submissions` para Red de Apoyo 1x10.
 - Crea la llave foránea e índice del tipo de apoyo.
 - Conserva `name`, `address` y todos los registros anteriores.
 

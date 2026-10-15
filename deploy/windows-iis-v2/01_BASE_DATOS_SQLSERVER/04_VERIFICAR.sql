@@ -6,6 +6,8 @@ SET NOCOUNT ON;
 IF OBJECT_ID(N'dbo.people', N'U') IS NULL THROW 51040, N'Falta dbo.people.', 1;
 IF OBJECT_ID(N'dbo.support_types', N'U') IS NULL THROW 51041, N'Falta dbo.support_types.', 1;
 IF OBJECT_ID(N'dbo.app_users', N'U') IS NULL THROW 51042, N'Falta dbo.app_users.', 1;
+IF OBJECT_ID(N'dbo.structure_submissions', N'U') IS NULL THROW 51068, N'Falta dbo.structure_submissions.', 1;
+IF OBJECT_ID(N'dbo.support_network_submissions', N'U') IS NULL THROW 51069, N'Falta dbo.support_network_submissions.', 1;
 
 IF COL_LENGTH(N'dbo.people', N'given_names') IS NULL THROW 51043, N'Falta people.given_names.', 1;
 IF COL_LENGTH(N'dbo.people', N'paternal_surname') IS NULL THROW 51044, N'Falta people.paternal_surname.', 1;
@@ -91,6 +93,9 @@ UNION ALL
 SELECT N'dbo.support_types', COUNT_BIG(*) FROM dbo.support_types
 UNION ALL
 SELECT N'dbo.app_users', COUNT_BIG(*) FROM dbo.app_users;
+SELECT N'dbo.structure_submissions' AS Objeto, COUNT_BIG(*) AS Filas FROM dbo.structure_submissions
+UNION ALL
+SELECT N'dbo.support_network_submissions', COUNT_BIG(*) FROM dbo.support_network_submissions;
 
 PRINT N'VERIFICACION SQL OK.';
 GO

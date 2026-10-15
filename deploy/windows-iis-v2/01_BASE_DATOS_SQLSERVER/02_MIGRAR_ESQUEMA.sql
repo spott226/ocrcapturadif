@@ -53,6 +53,45 @@ BEGIN TRY
         ALTER TABLE dbo.app_users ADD form_access nvarchar(255) NOT NULL
             CONSTRAINT DF_app_users_form_access DEFAULT (N'ocr') WITH VALUES;
 
+    IF OBJECT_ID(N'dbo.structure_submissions', N'U') IS NULL
+    BEGIN
+        CREATE TABLE dbo.structure_submissions
+        (
+            id int IDENTITY(1,1) NOT NULL CONSTRAINT PK_structure_submissions PRIMARY KEY,
+            email nvarchar(254) NOT NULL,
+            full_name nvarchar(220) NOT NULL,
+            birth_date date NOT NULL,
+            electoral_section nvarchar(10) NOT NULL,
+            phone nvarchar(15) NOT NULL,
+            facebook_profile nvarchar(300) NOT NULL,
+            education nvarchar(220) NOT NULL,
+            age int NOT NULL,
+            workplace nvarchar(300) NOT NULL,
+            front_image varbinary(max) NOT NULL,
+            front_mime nvarchar(50) NOT NULL,
+            back_image varbinary(max) NOT NULL,
+            back_mime nvarchar(50) NOT NULL,
+            created_by nvarchar(254) NOT NULL,
+            created_at datetimeoffset(6) NOT NULL CONSTRAINT DF_structure_created_at DEFAULT (SYSDATETIMEOFFSET())
+        );
+    END;
+
+    IF OBJECT_ID(N'dbo.support_network_submissions', N'U') IS NULL
+    BEGIN
+        CREATE TABLE dbo.support_network_submissions
+        (
+            id int IDENTITY(1,1) NOT NULL CONSTRAINT PK_support_network_submissions PRIMARY KEY,
+            leadership nvarchar(180) NOT NULL,
+            person_1 nvarchar(300) NOT NULL, person_2 nvarchar(300) NOT NULL,
+            person_3 nvarchar(300) NOT NULL, person_4 nvarchar(300) NOT NULL,
+            person_5 nvarchar(300) NOT NULL, person_6 nvarchar(300) NOT NULL,
+            person_7 nvarchar(300) NOT NULL, person_8 nvarchar(300) NOT NULL,
+            person_9 nvarchar(300) NOT NULL, person_10 nvarchar(300) NOT NULL,
+            created_by nvarchar(254) NOT NULL,
+            created_at datetimeoffset(6) NOT NULL CONSTRAINT DF_network_created_at DEFAULT (SYSDATETIMEOFFSET())
+        );
+    END;
+
     IF COL_LENGTH(N'dbo.people', N'given_names') IS NULL
         ALTER TABLE dbo.people ADD given_names nvarchar(120) NOT NULL
             CONSTRAINT DF_people_given_names DEFAULT (N'') WITH VALUES;

@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="hero compact-hero"><div><p class="eyebrow">Formulario</p><h1>Datos de estructura</h1><p>Información relevante sobre los integrantes del equipo.</p></div></section>
+{% if request.query_params.get('guardado') %}<div class="success">Datos de estructura guardados correctamente.</div>{% endif %}
+<section class="card"><form method="post" enctype="multipart/form-data" class="form-grid">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <label>Correo<input type="email" name="email" maxlength="254" required></label>
+  <label>Nombre completo<input name="full_name" maxlength="220" required></label>
+  <label>Fecha de nacimiento<input type="date" name="birth_date" required></label>
+  <label>Sección electoral<input name="electoral_section" inputmode="numeric" maxlength="10" required></label>
+  <label>Número telefónico<input name="phone" inputmode="tel" pattern="[0-9]{10}" maxlength="10" required></label>
+  <label>Perfil de Facebook<input name="facebook_profile" maxlength="300" required></label>
+  <label>Carrera o nivel de estudios<input name="education" maxlength="220" required></label>
+  <label>Edad<input type="number" name="age" min="15" max="120" required></label>
+  <label class="wide">Dependencia y puesto de trabajo<input name="workplace" maxlength="300" required></label>
+  <label>Frente de INE<input type="file" name="front" accept="image/jpeg,image/png,image/webp" required><small>La imagen quedará resguardada en la base de datos.</small></label>
+  <label>Reverso de INE<input type="file" name="back" accept="image/jpeg,image/png,image/webp" required><small>La imagen quedará resguardada en la base de datos.</small></label>
+  <div class="actions wide"><a class="button ghost" href="/">Cancelar</a><button>Guardar formulario</button></div>
+</form></section>
+{% endblock %}

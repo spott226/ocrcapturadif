@@ -1,6 +1,6 @@
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, Unicode
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, LargeBinary, Unicode
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .database import Base
@@ -91,3 +91,43 @@ class Person(Base):
         # Legacy rows have no municipality. Preserve access to their previous
         # address rather than attempting a destructive automatic conversion.
         return self.municipality or self.address
+
+
+class StructureSubmission(Base):
+    __tablename__ = "structure_submissions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    email: Mapped[str] = mapped_column(Unicode(254), index=True)
+    full_name: Mapped[str] = mapped_column(Unicode(220), index=True)
+    birth_date: Mapped[date] = mapped_column(Date)
+    electoral_section: Mapped[str] = mapped_column(Unicode(10), index=True)
+    phone: Mapped[str] = mapped_column(Unicode(15), index=True)
+    facebook_profile: Mapped[str] = mapped_column(Unicode(300))
+    education: Mapped[str] = mapped_column(Unicode(220))
+    age: Mapped[int] = mapped_column(Integer)
+    workplace: Mapped[str] = mapped_column(Unicode(300))
+    front_image: Mapped[bytes] = mapped_column(LargeBinary)
+    front_mime: Mapped[str] = mapped_column(Unicode(50))
+    back_image: Mapped[bytes] = mapped_column(LargeBinary)
+    back_mime: Mapped[str] = mapped_column(Unicode(50))
+    created_by: Mapped[str] = mapped_column(Unicode(254), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+
+class SupportNetworkSubmission(Base):
+    __tablename__ = "support_network_submissions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    leadership: Mapped[str] = mapped_column(Unicode(180), index=True)
+    person_1: Mapped[str] = mapped_column(Unicode(300))
+    person_2: Mapped[str] = mapped_column(Unicode(300))
+    person_3: Mapped[str] = mapped_column(Unicode(300))
+    person_4: Mapped[str] = mapped_column(Unicode(300))
+    person_5: Mapped[str] = mapped_column(Unicode(300))
+    person_6: Mapped[str] = mapped_column(Unicode(300))
+    person_7: Mapped[str] = mapped_column(Unicode(300))
+    person_8: Mapped[str] = mapped_column(Unicode(300))
+    person_9: Mapped[str] = mapped_column(Unicode(300))
+    person_10: Mapped[str] = mapped_column(Unicode(300))
+    created_by: Mapped[str] = mapped_column(Unicode(254), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)

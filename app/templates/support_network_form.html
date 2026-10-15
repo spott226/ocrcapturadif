@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="hero compact-hero"><div><p class="eyebrow">Formulario</p><h1>Red de Apoyo 1x10</h1><p>Registre el liderazgo y las diez personas de su red.</p></div></section>
+{% if request.query_params.get('guardado') %}<div class="success">Red de apoyo guardada correctamente.</div>{% endif %}
+<section class="card"><form method="post" class="stack">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <label>Liderazgo<select name="leadership" class="scroll-select" size="7" required><option value="">Seleccione…</option>{% for leader in network_leaders %}<option value="{{ leader }}">{{ leader }}</option>{% endfor %}</select><small>Este catálogo pertenece únicamente a Red de Apoyo 1x10.</small></label>
+  {% for number in range(1, 11) %}<label>Nombre y Facebook de la Persona {{ number }}<input name="person_{{ number }}" maxlength="300" required></label>{% endfor %}
+  <div class="actions"><a class="button ghost" href="/">Cancelar</a><button>Guardar red de apoyo</button></div>
+</form></section>
+{% endblock %}
