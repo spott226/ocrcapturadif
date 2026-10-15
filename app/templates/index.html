@@ -5,7 +5,7 @@
 </section>
 <section class="form-catalog" aria-label="Formularios disponibles">
   {% for form in available_forms %}
-  <article class="form-card"><div><small>Formulario del sistema</small><h2>{{ form.name }}</h2><p>{{ form.description }}</p></div><a class="button" href="{{ form.url }}">Abrir formulario</a></article>
+  <article class="form-card"><div><small>Formulario del sistema</small><h2>{{ form.name }}</h2><p>{{ form.description }}</p></div><a class="button" href="{{ public_prefix }}{{ form.url }}">Abrir formulario</a></article>
   {% else %}<div class="alert">Su cuenta no tiene formularios asignados. Solicite acceso al superadministrador.</div>{% endfor %}
 </section>
 {% endblock %}

@@ -36,7 +36,10 @@ def main() -> int:
         connection.exec_driver_sql("SELECT 1")
 
     inspector = inspect(engine)
-    required_tables = {"people", "support_types", "app_users"}
+    required_tables = {
+        "people", "support_types", "app_users",
+        "structure_submissions", "support_network_submissions",
+    }
     available_tables = set(inspector.get_table_names())
     missing_tables = sorted(required_tables - available_tables)
     if missing_tables:
@@ -55,7 +58,18 @@ def main() -> int:
         "support_types": {"id", "code", "name", "is_active", "sort_order"},
         "app_users": {
             "id", "email", "password_hash", "role", "is_active",
-            "created_by", "created_at", "last_login_at",
+            "created_by", "created_at", "last_login_at", "form_access",
+        },
+        "structure_submissions": {
+            "id", "email", "full_name", "birth_date", "electoral_section",
+            "phone", "facebook_profile", "education", "age", "workplace",
+            "front_image", "front_mime", "back_image", "back_mime",
+            "created_by", "created_at",
+        },
+        "support_network_submissions": {
+            "id", "leadership", "created_by", "created_at",
+            *{f"person_{number}" for number in range(1, 11)},
+            *{f"facebook_{number}" for number in range(1, 11)},
         },
     }
     for table_name, expected in required_columns.items():

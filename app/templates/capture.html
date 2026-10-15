@@ -1,18 +1,18 @@
 {% extends "base.html" %}
 {% block content %}
-<a class="back-home" href="/">← Volver al inicio</a>
+<a class="back-home" href="{{ public_prefix }}/">← Volver al inicio</a>
 <section class="hero compact-hero"><div><p class="eyebrow">Captura de INE</p><h1>Nueva captura</h1><p>Fotografíe ambos lados y revise los datos antes de guardar.</p></div></section>
 {% if request.query_params.get('guardado') %}<div class="success">Registro guardado correctamente.</div>{% endif %}
 <section class="card">
   <div class="notice"><strong>Use la cámara:</strong> permita el acceso cuando el navegador lo solicite. Las fotos de este formulario se procesan en memoria y se eliminan al terminar.</div>
   {% if support_types %}
-  <form method="post" action="/ocr" enctype="multipart/form-data" class="upload-grid" id="ocr-form">
+  <form method="post" action="{{ public_prefix }}/ocr" enctype="multipart/form-data" class="upload-grid" id="ocr-form">
     <input type="hidden" name="csrf" value="{{ csrf }}">
     <div class="drop camera-field"><strong>Frente de la INE</strong><button type="button" class="camera-open" data-target="front">Abrir cámara</button><span class="capture-status" id="front-status">Sin fotografía</span><img class="capture-preview" id="front-preview" alt="Vista previa del frente"><label class="file-fallback">O seleccione una imagen<input type="file" name="front" id="front" accept="image/jpeg,image/png,image/webp" required></label></div>
     <div class="drop camera-field"><strong>Reverso de la INE <small>(opcional)</small></strong><button type="button" class="camera-open" data-target="back">Abrir cámara</button><span class="capture-status" id="back-status">Sin fotografía</span><img class="capture-preview" id="back-preview" alt="Vista previa del reverso"><label class="file-fallback">O seleccione una imagen<input type="file" name="back" id="back" accept="image/jpeg,image/png,image/webp"></label></div>
     <button>Leer datos de la INE</button>
   </form>
-  {% elif user.is_superadmin %}<div class="alert">Antes de capturar, agregue al menos un <a href="/admin/tipos-apoyo">tipo de apoyo activo</a>.</div>
+  {% elif user.is_superadmin %}<div class="alert">Antes de capturar, agregue al menos un <a href="{{ public_prefix }}/admin/tipos-apoyo">tipo de apoyo activo</a>.</div>
   {% else %}<div class="alert">Aún no hay tipos de apoyo disponibles. Solicite al superadministrador que configure el catálogo.</div>{% endif %}
 </section>
 <dialog id="camera-dialog"><div class="camera-shell"><h2 id="camera-title">Fotografiar INE</h2><p id="camera-message">Centre la credencial completa y evite reflejos.</p><div class="quality-readout" aria-live="polite"><span id="quality-light">Luz</span><span id="quality-focus">Enfoque</span><span id="quality-glare">Reflejo</span></div><div class="camera-stage" id="camera-stage"><video id="camera-video" autoplay playsinline muted></video><div class="ine-guide" id="ine-guide" aria-hidden="true"><span>INE completa dentro del marco</span></div></div><canvas id="camera-canvas" hidden></canvas><div class="camera-actions"><button type="button" id="camera-cancel" class="button ghost">Cancelar</button><button type="button" id="camera-capture">Tomar mejor cuadro</button></div></div></dialog>

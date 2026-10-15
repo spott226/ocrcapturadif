@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     force_https: bool = False
     allow_sqlite_in_iis: bool = False
     max_upload_mb: int = 8
+    public_prefix: str = ""
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
 

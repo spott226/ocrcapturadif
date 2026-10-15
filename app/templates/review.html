@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block content %}
-<a class="back-home" href="/">← Volver al inicio</a>
+<a class="back-home" href="{{ public_prefix }}/">← Volver al inicio</a>
 <section class="card">
   <p class="eyebrow">Paso 2 de 2</p>
   <h1>Revise y complete</h1>
@@ -11,7 +11,7 @@
   {% endif %}
   {% if not support_types %}<div class="alert">No hay un tipo de apoyo activo. El superadministrador debe configurar el catálogo antes de guardar.</div>{% endif %}
 
-  <form method="post" action="/registros" class="form-grid">
+  <form method="post" action="{{ public_prefix }}/registros" class="form-grid">
     <input type="hidden" name="csrf" value="{{ csrf }}">
     <label>Nombre(s)<input name="given_names" value="{{ data.given_names or '' }}" maxlength="120" required></label>
     <label>Apellido paterno<input name="paternal_surname" value="{{ data.paternal_surname or '' }}" maxlength="80" required></label>
@@ -39,7 +39,7 @@
         {% for leader in leaders %}<option value="{{ leader }}" {% if data.leader|default('', true)|lower == leader|lower %}selected{% endif %}>{{ leader }}</option>{% endfor %}
       </select>
     </label>
-    <div class="actions wide"><a href="/captura" class="button ghost">Cancelar</a><button {% if not support_types %}disabled{% endif %}>Confirmar y guardar</button></div>
+    <div class="actions wide"><a href="{{ public_prefix }}/captura" class="button ghost">Cancelar</a><button {% if not support_types %}disabled{% endif %}>Confirmar y guardar</button></div>
   </form>
 </section>
 {% endblock %}

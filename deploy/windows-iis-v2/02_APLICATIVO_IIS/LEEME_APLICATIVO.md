@@ -4,25 +4,19 @@ Diseñado para Windows Server 2022, IIS 10 y Windows PowerShell 5.1. Actualiza
 únicamente el código de `CapturaApoyosDIF`; no ejecuta `iisreset` y no modifica sitios,
 bindings, dominio, puerto ni certificado.
 
-## Regla crítica: conservar la versión que funciona
+## Versión del servidor ya conservada
 
-El `main.py` del servidor fue modificado después del despliegue original. Antes de
-preparar el paquete nuevo, ejecute en el servidor aplicativo:
+El `main.py` del servidor fue modificado después del despliegue original. Esa versión
+ya fue recopilada el 2026-10-15, comparada y fusionada con este paquete. Su huella es:
 
-```powershell
-Set-ExecutionPolicy -Scope Process Bypass -Force
-Set-Location "C:\ruta\de\este\paquete"
-.\RECOPILAR_VERSION_ACTUAL.ps1
+```text
+712b2f34721ee17bdda671da92ef5a669d696841e3a35fab60259665a83e0db9
 ```
 
-Se crea un ZIP en `C:\Users\Public\Documents`. No incluye `.env`, `.venv`, datos,
-registros, imágenes, exportaciones, bases ni secretos. Lleve ese ZIP al ambiente de
-desarrollo, fusione sus cambios con la versión nueva y ejecute las pruebas. No publique
-una copia antigua del repositorio.
-
-El ZIP contiene `HUELLA_APP_SHA256.txt`. Al construir el paquete final, copie solamente
-esa huella hexadecimal a `VERSION_BASE_SERVIDOR.sha256`. El actualizador la compara con
-el código instalado para evitar sobrescribir una versión distinta.
+`VERSION_BASE_SERVIDOR.sha256` contiene esa misma huella. El actualizador la compara
+con el código instalado para evitar sobrescribir una versión distinta. No necesita
+ejecutar nuevamente `RECOPILAR_VERSION_ACTUAL.ps1` salvo que alguien modifique el código
+del servidor después de esta recopilación.
 
 ## Contenido que debe tener `payload`
 
@@ -45,7 +39,23 @@ INE, archivos Excel exportados o una base local.
    ejemplo `C:\Actualizaciones\CapturaApoyosDIF_2026-10` (fuera de
    `C:\inetpub\CapturaApoyosDIF`).
 3. Abra **Windows PowerShell como administrador**.
-4. Ejecute:
+4. Abra la configuración existente sin compartir su contenido:
+
+```powershell
+notepad "C:\inetpub\CapturaApoyosDIF\.env"
+```
+
+Confirme que la conexión `SQLSERVER_*` apunte a la base nueva y agregue esta línea,
+porque el IIS actual publica la aplicación bajo esa ruta:
+
+```dotenv
+PUBLIC_PREFIX=/CapturaApoyosDIF
+```
+
+Guarde el archivo. No cambie `SECRET_KEY`, `ADMIN_EMAIL` ni contraseñas durante esta
+actualización.
+
+5. Ejecute:
 
 ```powershell
 Set-ExecutionPolicy -Scope Process Bypass -Force
@@ -74,7 +84,7 @@ Puede agregar la URL ya configurada para una verificación HTTP final:
 
 ```powershell
 .\ACTUALIZAR_IIS.ps1 -ConfirmarCodigoFusionado `
-  -UrlVerificacion "https://dominio-institucional/ruta-de-salud"
+  -UrlVerificacion "https://dominio-institucional/CapturaApoyosDIF/salud"
 ```
 
 ## Reversión manual

@@ -27,6 +27,22 @@ settings = get_settings()
 BASE = Path(__file__).resolve().parent
 logger = logging.getLogger("uvicorn.error")
 
+
+def normalize_public_prefix(value: str) -> str:
+    prefix = value.strip()
+    if not prefix or prefix == "/":
+        return ""
+    return "/" + prefix.strip("/")
+
+
+PUBLIC_PREFIX = normalize_public_prefix(settings.public_prefix)
+
+
+def public_url(path: str = "/") -> str:
+    if not path.startswith("/"):
+        path = "/" + path
+    return f"{PUBLIC_PREFIX}{path}"
+
 ROLE_SUPERADMIN = "superadmin"
 ROLE_CAPTURISTA = "capturista"
 VALID_ROLES = {ROLE_SUPERADMIN, ROLE_CAPTURISTA}
@@ -218,7 +234,13 @@ async def lifespan(_app: FastAPI):
     yield
 
 
-app = FastAPI(title="Captura Apoyos", docs_url=None, redoc_url=None, lifespan=lifespan)
+app = FastAPI(
+    title="Captura Apoyos",
+    docs_url=None,
+    redoc_url=None,
+    root_path=PUBLIC_PREFIX,
+    lifespan=lifespan,
+)
 app.add_middleware(
     SessionMiddleware,
     secret_key=settings.secret_key,
@@ -236,7 +258,7 @@ templates = Jinja2Templates(directory=BASE / "templates")
 async def friendly_http_errors(request: Request, exc: HTTPException):
     if exc.status_code == 401:
         request.session.clear()
-        return RedirectResponse("/login", status_code=303)
+        return RedirectResponse(public_url("/login"), status_code=303)
     return JSONResponse({"detail": exc.detail}, status_code=exc.status_code, headers=exc.headers)
 
 
@@ -264,6 +286,7 @@ def page(request: Request, name: str, **context):
         request=request,
         user=user,
         csrf=csrf_token(request.session),
+        public_prefix=PUBLIC_PREFIX,
     )
     if user and "can_use_ocr" not in context:
         context["can_use_ocr"] = FORM_OCR in allowed_form_codes(user)
@@ -409,7 +432,7 @@ def login_form(
     db: Session = Depends(get_db),
 ):
     if current_user(request, db):
-        return RedirectResponse("/", status_code=303)
+        return RedirectResponse(public_url("/"), status_code=303)
     return page(
         request,
         "login.html",
@@ -434,14 +457,14 @@ def login(
     db.commit()
     request.session.clear()
     request.session["user_id"] = user.id
-    return RedirectResponse("/", status_code=303)
+    return RedirectResponse(public_url("/"), status_code=303)
 
 
 @app.post("/logout")
 def logout(request: Request, csrf: str = Form(...)):
     require_csrf(request, csrf)
     request.session.clear()
-    return RedirectResponse("/login", status_code=303)
+    return RedirectResponse(public_url("/login"), status_code=303)
 
 
 def password_page(request: Request, *, error: str | None = None):
@@ -479,7 +502,7 @@ def change_password(
     user.password_hash = password_hash.hash(new_password)
     db.commit()
     request.session.clear()
-    return RedirectResponse("/login?cambiada=1", status_code=303)
+    return RedirectResponse(public_url("/login?cambiada=1"), status_code=303)
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -589,7 +612,7 @@ async def save_structure_form(
         created_by=user.email,
     ))
     db.commit()
-    return RedirectResponse("/formularios/datos-estructura?guardado=1", status_code=303)
+    return RedirectResponse(public_url("/formularios/datos-estructura?guardado=1"), status_code=303)
 
 
 @app.get("/formularios/red-apoyo", response_class=HTMLResponse)
@@ -632,7 +655,7 @@ def save_support_network_form(
         created_by=user.email,
     ))
     db.commit()
-    return RedirectResponse("/formularios/red-apoyo?guardado=1", status_code=303)
+    return RedirectResponse(public_url("/formularios/red-apoyo?guardado=1"), status_code=303)
 
 
 @app.get("/admin/formularios/datos-estructura", response_class=HTMLResponse)
@@ -928,7 +951,7 @@ def save(
     )
     db.add(person)
     db.commit()
-    return RedirectResponse("/captura?guardado=1", status_code=303)
+    return RedirectResponse(public_url("/captura?guardado=1"), status_code=303)
 
 
 @app.post("/registros/{person_id}/eliminar")
@@ -945,7 +968,7 @@ def delete_record(
         raise HTTPException(404, "Registro no encontrado")
     db.delete(person)
     db.commit()
-    return RedirectResponse("/beneficiarios?eliminado=1", status_code=303)
+    return RedirectResponse(public_url("/beneficiarios?eliminado=1"), status_code=303)
 
 
 @app.get("/exportar.xlsx")
@@ -1070,7 +1093,7 @@ def create_user(
     except IntegrityError:
         db.rollback()
         return users_page(request, db, error="Ya existe una cuenta con ese correo.")
-    return RedirectResponse("/admin/usuarios?creado=1", status_code=303)
+    return RedirectResponse(public_url("/admin/usuarios?creado=1"), status_code=303)
 
 
 @app.post("/admin/usuarios/{user_id}/formularios", response_class=HTMLResponse)
@@ -1093,7 +1116,7 @@ def change_user_forms(
         raise HTTPException(400, "Formulario no válido")
     target.form_access = ",".join(selected_forms)
     db.commit()
-    return RedirectResponse("/admin/usuarios?actualizado=1", status_code=303)
+    return RedirectResponse(public_url("/admin/usuarios?actualizado=1"), status_code=303)
 
 
 def ensure_admin_change_is_safe(db: Session, actor: AppUser, target: AppUser, *, removes_admin: bool) -> None:
@@ -1131,7 +1154,7 @@ def change_user_role(
     )
     target.role = role
     db.commit()
-    return RedirectResponse("/admin/usuarios?actualizado=1", status_code=303)
+    return RedirectResponse(public_url("/admin/usuarios?actualizado=1"), status_code=303)
 
 
 @app.post("/admin/usuarios/{user_id}/estado")
@@ -1156,7 +1179,7 @@ def change_user_state(
     )
     target.active = new_active
     db.commit()
-    return RedirectResponse("/admin/usuarios?actualizado=1", status_code=303)
+    return RedirectResponse(public_url("/admin/usuarios?actualizado=1"), status_code=303)
 
 
 def support_types_page(request: Request, db: Session, *, error: str | None = None):
@@ -1195,7 +1218,7 @@ def create_support_type(
     except IntegrityError:
         db.rollback()
         return support_types_page(request, db, error="Ese código de apoyo ya existe.")
-    return RedirectResponse("/admin/tipos-apoyo?creado=1", status_code=303)
+    return RedirectResponse(public_url("/admin/tipos-apoyo?creado=1"), status_code=303)
 
 
 @app.post("/admin/tipos-apoyo/{support_type_id}")
@@ -1222,4 +1245,4 @@ def update_support_type(
     item.sort_order = sort_order
     item.active = active == "1"
     db.commit()
-    return RedirectResponse("/admin/tipos-apoyo?actualizado=1", status_code=303)
+    return RedirectResponse(public_url("/admin/tipos-apoyo?actualizado=1"), status_code=303)

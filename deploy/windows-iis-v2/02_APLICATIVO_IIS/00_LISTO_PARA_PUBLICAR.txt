@@ -1,0 +1,9 @@
+VERSION DEL SERVIDOR RECOPILADA Y FUSIONADA.
+
+Huella esperada de la aplicacion instalada:
+712b2f34721ee17bdda671da92ef5a669d696841e3a35fab60259665a83e0db9
+
+El paquete conserva la publicacion bajo /CapturaApoyosDIF mediante PUBLIC_PREFIX y
+mantiene intactos .env, .venv, web.config, datos, respaldos, bindings y certificado.
+Si la huella instalada ya no coincide, el actualizador se detendra antes de tocar IIS.
+No use -AceptarBaseDistinta como atajo.

@@ -1,5 +1,5 @@
 {% extends "base.html" %}
 {% block content %}
-<section class="hero compact-hero"><div><p class="eyebrow">Administración</p><h1>Registros Red de Apoyo 1x10</h1><p>{{ rows|length }} respuestas.</p></div><a class="button" href="/admin/formularios/red-apoyo.xlsx">Exportar Excel</a></section>
+<section class="hero compact-hero"><div><p class="eyebrow">Administración</p><h1>Registros Red de Apoyo 1x10</h1><p>{{ rows|length }} respuestas.</p></div><a class="button" href="{{ public_prefix }}/admin/formularios/red-apoyo.xlsx">Exportar Excel</a></section>
 <section class="card"><div class="records-list">{% for row in rows %}<article class="record-card"><header class="record-head"><div><small>Registro #{{ row.id }}</small><h3>{{ row.leadership }}</h3></div></header><ol class="network-record-list">{% for number in range(1, 11) %}<li><strong>{{ row|attr('person_' ~ number) }}</strong><span>Facebook: {{ row|attr('facebook_' ~ number) or '—' }}</span></li>{% endfor %}</ol><small>Capturó {{ row.created_by }} · {{ row.created_at.strftime('%d/%m/%Y %H:%M') }}</small></article>{% else %}<div class="empty">Todavía no hay registros.</div>{% endfor %}</div></section>
 {% endblock %}

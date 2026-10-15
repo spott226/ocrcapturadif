@@ -14,7 +14,7 @@ os.environ["ADMIN_EMAIL"] = "admin@example.test"
 os.environ["ADMIN_PASSWORD"] = "a-secure-test-password"
 
 from app.database import Base, SessionLocal, build_database_url, engine
-from app.main import app, migrate_early_v2_database
+from app.main import app, migrate_early_v2_database, normalize_public_prefix
 from app.models import AppUser, Person, StructureSubmission, SupportNetworkSubmission, SupportType
 from tools.importar_excel import import_workbook
 
@@ -164,6 +164,13 @@ def test_health_and_home_authentication():
         response = client.get("/", follow_redirects=False)
         assert response.status_code == 303
         assert response.headers["location"] == "/login"
+
+
+def test_public_prefix_normalization_for_iis_subpath():
+    assert normalize_public_prefix("") == ""
+    assert normalize_public_prefix("/") == ""
+    assert normalize_public_prefix("CapturaApoyosDIF") == "/CapturaApoyosDIF"
+    assert normalize_public_prefix("/CapturaApoyosDIF/") == "/CapturaApoyosDIF"
 
 
 def test_superadmin_can_save_export_and_delete_fictitious_record():

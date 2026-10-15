@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block content %}
-<a class="back-home" href="/">← Volver al inicio</a>
+<a class="back-home" href="{{ public_prefix }}/">← Volver al inicio</a>
 <section class="hero compact-hero"><div><p class="eyebrow">Formulario</p><h1>Datos de estructura</h1><p>Información relevante sobre los integrantes del equipo.</p></div></section>
 {% if request.query_params.get('guardado') %}<div class="success">Datos de estructura guardados correctamente.</div>{% endif %}
 <section class="card"><form method="post" enctype="multipart/form-data" class="form-grid">
@@ -16,6 +16,6 @@
   <label class="wide">Dependencia y puesto de trabajo<input name="workplace" maxlength="300" required></label>
   <label>Frente de INE<input type="file" name="front" accept="image/jpeg,image/png,image/webp" required><small>La imagen quedará resguardada en la base de datos.</small></label>
   <label>Reverso de INE<input type="file" name="back" accept="image/jpeg,image/png,image/webp" required><small>La imagen quedará resguardada en la base de datos.</small></label>
-  <div class="actions wide"><a class="button ghost" href="/">Cancelar</a><button>Guardar formulario</button></div>
+  <div class="actions wide"><a class="button ghost" href="{{ public_prefix }}/">Cancelar</a><button>Guardar formulario</button></div>
 </form></section>
 {% endblock %}
