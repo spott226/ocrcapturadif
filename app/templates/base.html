@@ -2,11 +2,11 @@
 <html lang="es"><head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
   <title>{% block title %}Captura Apoyos{% endblock %}</title>
-  <link rel="stylesheet" href="/static/style.css?v=20261015-3"><link rel="stylesheet" href="/static/camera.css?v=20261006-2"><link rel="stylesheet" href="/static/responsive.css?v=20261006-2"><link rel="stylesheet" href="/static/capture-fields.css?v=20261006-2">
+  <link rel="stylesheet" href="/static/style.css?v=20261015-5"><link rel="stylesheet" href="/static/camera.css?v=20261006-2"><link rel="stylesheet" href="/static/responsive.css?v=20261006-2"><link rel="stylesheet" href="/static/capture-fields.css?v=20261006-2">
   <script src="/static/camera.js?v=20261006-2" defer></script><script src="/static/ui.js?v=20261006-2" defer></script>
 </head><body class="{{ 'authenticated' if user else '' }}">
 {% if user %}
-<aside class="sidebar">
+<aside class="sidebar desktop-sidebar">
   <a href="/" class="brand">Captura Apoyos</a>
   <nav aria-label="Menú principal">
     <a href="/">Formularios</a>
@@ -22,6 +22,16 @@
   </nav>
   <div class="sidebar-account"><small>{{ user.email }} · {{ 'Superadministrador' if user.is_superadmin else 'Capturista' }}</small><a href="/cuenta/contrasena">Cambiar contraseña</a><form method="post" action="/logout"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="link">Cerrar sesión</button></form></div>
 </aside>
+<details class="mobile-nav">
+  <summary><span class="brand">Captura Apoyos</span><span class="mobile-menu-button">☰ Menú</span></summary>
+  <div class="mobile-nav-panel">
+    <nav aria-label="Menú móvil">
+      <a href="/">Formularios</a>{% if can_use_ocr %}<a href="/captura">Nueva captura</a>{% endif %}
+      {% if user.is_superadmin %}<a href="/beneficiarios">Beneficiarios</a><a href="/admin/formularios/datos-estructura">Datos de estructura</a><a href="/admin/formularios/red-apoyo">Red de Apoyo 1x10</a><a href="/admin/tipos-apoyo">Tipos de apoyo</a><a href="/admin/usuarios">Usuarios</a>{% endif %}
+    </nav>
+    <div class="mobile-account"><small>{{ user.email }} · {{ 'Superadministrador' if user.is_superadmin else 'Capturista' }}</small><a href="/cuenta/contrasena">Cambiar contraseña</a><form method="post" action="/logout"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="link">Cerrar sesión</button></form></div>
+  </div>
+</details>
 {% else %}<header><a href="/" class="brand">Captura Apoyos</a></header>{% endif %}
 <main>{% block content %}{% endblock %}</main>
 <footer>Uso institucional · Los datos personales deben tratarse conforme al aviso de privacidad aplicable.</footer>

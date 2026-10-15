@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% block content %}
+<a class="back-home" href="/">← Volver al inicio</a>
 <section class="hero compact-hero"><div><p class="eyebrow">Captura de INE</p><h1>Nueva captura</h1><p>Fotografíe ambos lados y revise los datos antes de guardar.</p></div></section>
 {% if request.query_params.get('guardado') %}<div class="success">Registro guardado correctamente.</div>{% endif %}
 <section class="card">

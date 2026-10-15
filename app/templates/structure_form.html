@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% block content %}
+<a class="back-home" href="/">← Volver al inicio</a>
 <section class="hero compact-hero"><div><p class="eyebrow">Formulario</p><h1>Datos de estructura</h1><p>Información relevante sobre los integrantes del equipo.</p></div></section>
 {% if request.query_params.get('guardado') %}<div class="success">Datos de estructura guardados correctamente.</div>{% endif %}
 <section class="card"><form method="post" enctype="multipart/form-data" class="form-grid">

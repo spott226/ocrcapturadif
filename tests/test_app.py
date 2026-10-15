@@ -426,6 +426,7 @@ def test_internal_structure_form_stores_both_ine_images_and_exports():
     with TestClient(app) as client:
         login(client)
         form = client.get("/formularios/datos-estructura")
+        assert "← Volver al inicio" in form.text
         saved = client.post(
             "/formularios/datos-estructura",
             data={
@@ -460,6 +461,9 @@ def test_internal_support_network_uses_its_own_leadership_catalog_and_exports():
         login(client)
         form = client.get("/formularios/red-apoyo")
         assert "Arath Gomez" in form.text
+        assert "← Volver al inicio" in form.text
+        assert 'name="leadership" required' in form.text
+        assert 'size="7"' not in form.text
         data = {"leadership": "Arath Gomez", "csrf": csrf_from(form)}
         data.update({f"person_{number}": f"Persona {number} / Facebook" for number in range(1, 11)})
         saved = client.post("/formularios/red-apoyo", data=data)
