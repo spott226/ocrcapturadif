@@ -82,7 +82,11 @@ function Confirmar-Payload([string]$Ruta) {
             if ($Nombre -eq '.env' -or $Nombre.StartsWith('.env.')) {
                 throw "El payload contiene un archivo de entorno no permitido: $($Item.FullName)"
             }
-            if ($Nombre -match '(secret|secreto|credential|credencial|password|contrasena)') {
+            # Los nombres de vistas y codigo (por ejemplo templates/password.html)
+            # pueden describir su funcion sin contener credenciales reales.
+            $ExtensionesCodigo = @('.py', '.html', '.css', '.js', '.md', '.ps1', '.sql')
+            if (($Nombre -match '(secret|secreto|credential|credencial|password|contrasena|contraseña)') -and
+                -not ($ExtensionesCodigo -contains $Extension)) {
                 throw "El payload parece contener un archivo secreto: $($Item.FullName)"
             }
             if (@('.sqlite', '.sqlite3', '.db', '.bak', '.mdf', '.ndf', '.ldf',

@@ -25,7 +25,11 @@ function Es-ArchivoPermitido([IO.FileInfo]$Archivo, [string]$Raiz) {
 
     $Nombre = $Archivo.Name.ToLowerInvariant()
     if ($Nombre -eq '.env' -or $Nombre.StartsWith('.env.')) { return $false }
-    if ($Nombre -match '(secret|secreto|credential|credencial|password|contrasena|contraseña)') {
+    # Permitir vistas y codigo cuyo nombre describe una funcion, como password.html.
+    # Los archivos de configuracion o datos con nombres sensibles siguen excluidos.
+    $ExtensionesCodigo = @('.py', '.html', '.css', '.js', '.md', '.ps1', '.sql')
+    if (($Nombre -match '(secret|secreto|credential|credencial|password|contrasena|contraseña)') -and
+        -not ($ExtensionesCodigo -contains $Archivo.Extension.ToLowerInvariant())) {
         return $false
     }
     if ($Nombre -eq 'web.config') { return $false }
