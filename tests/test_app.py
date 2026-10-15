@@ -256,6 +256,8 @@ def test_front_and_optional_back_are_merged_into_review(monkeypatch):
         assert response.status_code == 200
         assert 'name="cic" value="1382528441"' in response.text
         assert 'name="ocr_code" value="3904033366874"' in response.text
+        assert 'name="support_type_id" class="scroll-select" size="6"' in response.text
+        assert "Deslice dentro de la lista para ver todos los apoyos" in response.text
 
 
 def test_reverse_codes_are_normalized_before_saving():

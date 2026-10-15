@@ -25,10 +25,11 @@
       </select>
     </label>
     <label>Tipo de apoyo
-      <select name="support_type_id" required>
+      <select name="support_type_id" class="scroll-select" size="6" required>
         <option value="">Seleccione…</option>
         {% for item in support_types %}<option value="{{ item.id }}" {% if data.support_type_id|string == item.id|string %}selected{% endif %}>{{ item.name }}</option>{% endfor %}
       </select>
+      <small>Deslice dentro de la lista para ver todos los apoyos.</small>
     </label>
     <label>Número de teléfono<input name="phone" value="{{ data.phone or '' }}" maxlength="10" inputmode="tel" pattern="[0-9]{10}" placeholder="10 dígitos"></label>
     <label>Líder
