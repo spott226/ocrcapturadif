@@ -6,7 +6,7 @@
 <section class="card"><form method="post" class="stack">
   <input type="hidden" name="csrf" value="{{ csrf }}">
   <label>Liderazgo<select name="leadership" required><option value="">Seleccione un liderazgo…</option>{% for leader in network_leaders %}<option value="{{ leader }}">{{ leader }}</option>{% endfor %}</select><small>Toque el selector para desplegar el catálogo de Red de Apoyo 1x10.</small></label>
-  {% for number in range(1, 11) %}<label>Nombre y Facebook de la Persona {{ number }}<input name="person_{{ number }}" maxlength="300" required></label>{% endfor %}
+  {% for number in range(1, 11) %}<fieldset class="network-person"><legend>Persona {{ number }}</legend><label>Nombre completo<input name="person_{{ number }}" maxlength="300" required></label><label>Facebook<input name="facebook_{{ number }}" maxlength="300" placeholder="Nombre de perfil o enlace" required></label></fieldset>{% endfor %}
   <div class="actions"><a class="button ghost" href="/">Cancelar</a><button>Guardar red de apoyo</button></div>
 </form></section>
 {% endblock %}

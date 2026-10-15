@@ -87,10 +87,26 @@ BEGIN TRY
             person_5 nvarchar(300) NOT NULL, person_6 nvarchar(300) NOT NULL,
             person_7 nvarchar(300) NOT NULL, person_8 nvarchar(300) NOT NULL,
             person_9 nvarchar(300) NOT NULL, person_10 nvarchar(300) NOT NULL,
+            facebook_1 nvarchar(300) NOT NULL, facebook_2 nvarchar(300) NOT NULL,
+            facebook_3 nvarchar(300) NOT NULL, facebook_4 nvarchar(300) NOT NULL,
+            facebook_5 nvarchar(300) NOT NULL, facebook_6 nvarchar(300) NOT NULL,
+            facebook_7 nvarchar(300) NOT NULL, facebook_8 nvarchar(300) NOT NULL,
+            facebook_9 nvarchar(300) NOT NULL, facebook_10 nvarchar(300) NOT NULL,
             created_by nvarchar(254) NOT NULL,
             created_at datetimeoffset(6) NOT NULL CONSTRAINT DF_network_created_at DEFAULT (SYSDATETIMEOFFSET())
         );
     END;
+
+    IF COL_LENGTH(N'dbo.support_network_submissions', N'facebook_1') IS NULL ALTER TABLE dbo.support_network_submissions ADD facebook_1 nvarchar(300) NOT NULL CONSTRAINT DF_network_facebook_1 DEFAULT (N'') WITH VALUES;
+    IF COL_LENGTH(N'dbo.support_network_submissions', N'facebook_2') IS NULL ALTER TABLE dbo.support_network_submissions ADD facebook_2 nvarchar(300) NOT NULL CONSTRAINT DF_network_facebook_2 DEFAULT (N'') WITH VALUES;
+    IF COL_LENGTH(N'dbo.support_network_submissions', N'facebook_3') IS NULL ALTER TABLE dbo.support_network_submissions ADD facebook_3 nvarchar(300) NOT NULL CONSTRAINT DF_network_facebook_3 DEFAULT (N'') WITH VALUES;
+    IF COL_LENGTH(N'dbo.support_network_submissions', N'facebook_4') IS NULL ALTER TABLE dbo.support_network_submissions ADD facebook_4 nvarchar(300) NOT NULL CONSTRAINT DF_network_facebook_4 DEFAULT (N'') WITH VALUES;
+    IF COL_LENGTH(N'dbo.support_network_submissions', N'facebook_5') IS NULL ALTER TABLE dbo.support_network_submissions ADD facebook_5 nvarchar(300) NOT NULL CONSTRAINT DF_network_facebook_5 DEFAULT (N'') WITH VALUES;
+    IF COL_LENGTH(N'dbo.support_network_submissions', N'facebook_6') IS NULL ALTER TABLE dbo.support_network_submissions ADD facebook_6 nvarchar(300) NOT NULL CONSTRAINT DF_network_facebook_6 DEFAULT (N'') WITH VALUES;
+    IF COL_LENGTH(N'dbo.support_network_submissions', N'facebook_7') IS NULL ALTER TABLE dbo.support_network_submissions ADD facebook_7 nvarchar(300) NOT NULL CONSTRAINT DF_network_facebook_7 DEFAULT (N'') WITH VALUES;
+    IF COL_LENGTH(N'dbo.support_network_submissions', N'facebook_8') IS NULL ALTER TABLE dbo.support_network_submissions ADD facebook_8 nvarchar(300) NOT NULL CONSTRAINT DF_network_facebook_8 DEFAULT (N'') WITH VALUES;
+    IF COL_LENGTH(N'dbo.support_network_submissions', N'facebook_9') IS NULL ALTER TABLE dbo.support_network_submissions ADD facebook_9 nvarchar(300) NOT NULL CONSTRAINT DF_network_facebook_9 DEFAULT (N'') WITH VALUES;
+    IF COL_LENGTH(N'dbo.support_network_submissions', N'facebook_10') IS NULL ALTER TABLE dbo.support_network_submissions ADD facebook_10 nvarchar(300) NOT NULL CONSTRAINT DF_network_facebook_10 DEFAULT (N'') WITH VALUES;
 
     IF COL_LENGTH(N'dbo.people', N'given_names') IS NULL
         ALTER TABLE dbo.people ADD given_names nvarchar(120) NOT NULL

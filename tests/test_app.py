@@ -99,6 +99,22 @@ def test_migration_adds_form_access_when_last_login_already_exists():
     assert "form_access" in columns
 
 
+def test_migration_adds_separate_facebook_columns_to_existing_network_table():
+    SupportNetworkSubmission.__table__.drop(engine)
+    person_columns = ", ".join(f"person_{number} VARCHAR(300) NOT NULL" for number in range(1, 11))
+    with engine.begin() as connection:
+        connection.execute(text(
+            "CREATE TABLE support_network_submissions ("
+            "id INTEGER PRIMARY KEY, leadership VARCHAR(180) NOT NULL, "
+            f"{person_columns}, created_by VARCHAR(254) NOT NULL, created_at DATETIME NOT NULL)"
+        ))
+
+    migrate_early_v2_database()
+
+    columns = {column["name"] for column in inspect(engine).get_columns("support_network_submissions")}
+    assert {f"facebook_{number}" for number in range(1, 11)}.issubset(columns)
+
+
 def test_builds_sql_server_windows_auth_url_without_manual_password_encoding():
     sql_settings = SimpleNamespace(
         database_backend="sqlserver",
@@ -465,13 +481,15 @@ def test_internal_support_network_uses_its_own_leadership_catalog_and_exports():
         assert 'name="leadership" required' in form.text
         assert 'size="7"' not in form.text
         data = {"leadership": "Arath Gomez", "csrf": csrf_from(form)}
-        data.update({f"person_{number}": f"Persona {number} / Facebook" for number in range(1, 11)})
+        data.update({f"person_{number}": f"Persona {number}" for number in range(1, 11)})
+        data.update({f"facebook_{number}": f"facebook.com/persona{number}" for number in range(1, 11)})
         saved = client.post("/formularios/red-apoyo", data=data)
         assert saved.status_code == 200
         with SessionLocal() as db:
             row = db.scalar(select(SupportNetworkSubmission))
             assert row.leadership == "Arath Gomez"
-            assert row.person_10 == "Persona 10 / Facebook"
+            assert row.person_10 == "Persona 10"
+            assert row.facebook_10 == "facebook.com/persona10"
         assert client.get("/admin/formularios/red-apoyo.xlsx").status_code == 200
 
 

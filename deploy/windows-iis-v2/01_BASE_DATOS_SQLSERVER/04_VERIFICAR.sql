@@ -8,6 +8,8 @@ IF OBJECT_ID(N'dbo.support_types', N'U') IS NULL THROW 51041, N'Falta dbo.suppor
 IF OBJECT_ID(N'dbo.app_users', N'U') IS NULL THROW 51042, N'Falta dbo.app_users.', 1;
 IF OBJECT_ID(N'dbo.structure_submissions', N'U') IS NULL THROW 51068, N'Falta dbo.structure_submissions.', 1;
 IF OBJECT_ID(N'dbo.support_network_submissions', N'U') IS NULL THROW 51069, N'Falta dbo.support_network_submissions.', 1;
+IF COL_LENGTH(N'dbo.support_network_submissions', N'facebook_1') IS NULL THROW 51070, N'Falta support_network_submissions.facebook_1.', 1;
+IF COL_LENGTH(N'dbo.support_network_submissions', N'facebook_10') IS NULL THROW 51071, N'Falta support_network_submissions.facebook_10.', 1;
 
 IF COL_LENGTH(N'dbo.people', N'given_names') IS NULL THROW 51043, N'Falta people.given_names.', 1;
 IF COL_LENGTH(N'dbo.people', N'paternal_surname') IS NULL THROW 51044, N'Falta people.paternal_surname.', 1;

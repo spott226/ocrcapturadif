@@ -149,6 +149,7 @@ def migrate_early_v2_database() -> None:
     inspector = inspect(engine)
     tables = set(inspector.get_table_names())
     with engine.begin() as connection:
+        add_keyword = "ADD" if engine.dialect.name == "mssql" else "ADD COLUMN"
         for table_name in ("support_types", "app_users"):
             if table_name not in tables:
                 continue
@@ -164,7 +165,6 @@ def migrate_early_v2_database() -> None:
                     ))
         if "app_users" in tables:
             columns = {column["name"] for column in inspect(engine).get_columns("app_users")}
-            add_keyword = "ADD" if engine.dialect.name == "mssql" else "ADD COLUMN"
             if "last_login_at" not in columns:
                 type_sql = DateTime(timezone=True).compile(dialect=engine.dialect)
                 connection.execute(text(
@@ -177,6 +177,17 @@ def migrate_early_v2_database() -> None:
                     f"ALTER TABLE app_users {add_keyword} form_access {type_sql} "
                     f"NOT NULL DEFAULT {default_sql}"
                 ))
+        if "support_network_submissions" in tables:
+            columns = {column["name"] for column in inspect(engine).get_columns("support_network_submissions")}
+            type_sql = Unicode(300).compile(dialect=engine.dialect)
+            default_sql = "N''" if engine.dialect.name == "mssql" else "''"
+            for number in range(1, 11):
+                column = f"facebook_{number}"
+                if column not in columns:
+                    connection.execute(text(
+                        f"ALTER TABLE support_network_submissions {add_keyword} {column} {type_sql} "
+                        f"NOT NULL DEFAULT {default_sql}"
+                    ))
 
 
 def bootstrap_first_superadmin() -> None:
@@ -596,6 +607,11 @@ def save_support_network_form(
     person_5: str = Form(...), person_6: str = Form(...),
     person_7: str = Form(...), person_8: str = Form(...),
     person_9: str = Form(...), person_10: str = Form(...),
+    facebook_1: str = Form(...), facebook_2: str = Form(...),
+    facebook_3: str = Form(...), facebook_4: str = Form(...),
+    facebook_5: str = Form(...), facebook_6: str = Form(...),
+    facebook_7: str = Form(...), facebook_8: str = Form(...),
+    facebook_9: str = Form(...), facebook_10: str = Form(...),
     csrf: str = Form(...),
     db: Session = Depends(get_db),
 ):
@@ -605,11 +621,14 @@ def save_support_network_form(
         raise HTTPException(400, "Seleccione un liderazgo válido")
     people = [person_1, person_2, person_3, person_4, person_5,
               person_6, person_7, person_8, person_9, person_10]
-    if any(not value.strip() for value in people):
-        raise HTTPException(400, "Capture las diez personas de la red")
+    facebook_profiles = [facebook_1, facebook_2, facebook_3, facebook_4, facebook_5,
+                         facebook_6, facebook_7, facebook_8, facebook_9, facebook_10]
+    if any(not value.strip() for value in people + facebook_profiles):
+        raise HTTPException(400, "Capture el nombre y Facebook de las diez personas")
     db.add(SupportNetworkSubmission(
         leadership=leadership,
         **{f"person_{index}": value.strip()[:300] for index, value in enumerate(people, 1)},
+        **{f"facebook_{index}": value.strip()[:300] for index, value in enumerate(facebook_profiles, 1)},
         created_by=user.email,
     ))
     db.commit()
@@ -673,11 +692,15 @@ def export_support_network(request: Request, db: Session = Depends(get_db)):
     wb = Workbook()
     ws = wb.active
     ws.title = "Red de apoyo 1x10"
-    ws.append(["ID", "Liderazgo", *[f"Nombre y Facebook Persona {i}" for i in range(1, 11)],
-               "Capturó", "Fecha de captura"])
+    person_headers = []
+    for number in range(1, 11):
+        person_headers.extend([f"Nombre Persona {number}", f"Facebook Persona {number}"])
+    ws.append(["ID", "Liderazgo", *person_headers, "Capturó", "Fecha de captura"])
     for row in rows:
-        ws.append([row.id, row.leadership, *[getattr(row, f"person_{i}") for i in range(1, 11)],
-                   row.created_by, row.created_at.replace(tzinfo=None)])
+        person_values = []
+        for number in range(1, 11):
+            person_values.extend([getattr(row, f"person_{number}"), getattr(row, f"facebook_{number}")])
+        ws.append([row.id, row.leadership, *person_values, row.created_by, row.created_at.replace(tzinfo=None)])
     return workbook_response(wb, "red_apoyo_1x10.xlsx")
 
 

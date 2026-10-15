@@ -51,6 +51,13 @@ def main() -> int:
         if "form_access" not in user_columns:
             raise RuntimeError("falta columna de app_users: form_access")
 
+        network_columns = {item["name"] for item in inspector.get_columns("support_network_submissions")}
+        missing_facebook = sorted(
+            {f"facebook_{number}" for number in range(1, 11)}.difference(network_columns)
+        )
+        if missing_facebook:
+            raise RuntimeError("faltan columnas separadas de Facebook: " + ", ".join(missing_facebook))
+
         if not getattr(app, "routes", None):
             raise RuntimeError("FastAPI no registró rutas")
         with engine.connect() as connection:
