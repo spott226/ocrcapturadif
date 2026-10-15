@@ -29,12 +29,17 @@ class AppUser(Base):
     role: Mapped[str] = mapped_column(Unicode(32), default="capturista", index=True)
     active: Mapped[bool] = mapped_column("is_active", Boolean, default=True, index=True)
     created_by: Mapped[str] = mapped_column(Unicode(254))
+    form_access: Mapped[str] = mapped_column(Unicode(255), default="ocr")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     @property
     def is_superadmin(self) -> bool:
         return self.role == "superadmin"
+
+    @property
+    def form_codes(self) -> set[str]:
+        return {code.strip() for code in self.form_access.split(",") if code.strip()}
 
 
 class Person(Base):

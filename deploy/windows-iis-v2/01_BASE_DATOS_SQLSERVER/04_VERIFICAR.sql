@@ -27,6 +27,7 @@ IF COL_LENGTH(N'dbo.app_users', N'is_active') IS NULL THROW 51060, N'Falta app_u
 IF COL_LENGTH(N'dbo.app_users', N'created_by') IS NULL THROW 51061, N'Falta app_users.created_by.', 1;
 IF COL_LENGTH(N'dbo.app_users', N'created_at') IS NULL THROW 51062, N'Falta app_users.created_at.', 1;
 IF COL_LENGTH(N'dbo.app_users', N'last_login_at') IS NULL THROW 51063, N'Falta app_users.last_login_at.', 1;
+IF COL_LENGTH(N'dbo.app_users', N'form_access') IS NULL THROW 51067, N'Falta app_users.form_access.', 1;
 
 IF NOT EXISTS
 (

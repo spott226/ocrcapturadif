@@ -44,6 +44,10 @@ def main() -> int:
         if missing_columns:
             raise RuntimeError("faltan columnas de people: " + ", ".join(missing_columns))
 
+        user_columns = {item["name"] for item in inspector.get_columns("app_users")}
+        if "form_access" not in user_columns:
+            raise RuntimeError("falta columna de app_users: form_access")
+
         if not getattr(app, "routes", None):
             raise RuntimeError("FastAPI no registró rutas")
         with engine.connect() as connection:

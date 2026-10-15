@@ -316,6 +316,7 @@ def test_capturista_can_capture_but_cannot_view_export_delete_or_administer():
                 "email": "captura@example.test",
                 "password": "captura-segura-123",
                 "role": "capturista",
+                "forms": "ocr",
                 "csrf": csrf_from(admin.get("/")),
             },
         )
@@ -345,6 +346,57 @@ def test_capturista_can_capture_but_cannot_view_export_delete_or_administer():
                 follow_redirects=False,
             )
             assert forbidden.status_code == 403
+
+
+def test_form_permissions_limit_each_capturista_and_update_immediately():
+    with TestClient(app) as admin:
+        login(admin)
+        support_id = create_support(admin)
+        created = admin.post(
+            "/admin/usuarios",
+            data={
+                "email": "formularios@example.test",
+                "password": "formularios-seguros-123",
+                "role": "capturista",
+                "forms": "google_1",
+                "csrf": csrf_from(admin.get("/")),
+            },
+        )
+        assert created.status_code == 200
+        with SessionLocal() as db:
+            user = db.scalar(select(AppUser).where(AppUser.email == "formularios@example.test"))
+            assert user.form_access == "google_1"
+            user_id = user.id
+
+        with TestClient(app) as capturista:
+            home = login(capturista, "formularios@example.test", "formularios-seguros-123")
+            assert "Datos de estructura" in home.text
+            assert "Red De Apoyo 1x10" not in home.text
+            assert 'name="front"' not in home.text
+
+            forbidden_ocr = capturista.post(
+                "/ocr",
+                data={"csrf": csrf_from(home)},
+                files={"front": ("frente.jpg", b"frente", "image/jpeg")},
+            )
+            assert forbidden_ocr.status_code == 403
+            forbidden_save = capturista.post(
+                "/registros",
+                data=valid_record(csrf_from(capturista.get("/")), support_id),
+            )
+            assert forbidden_save.status_code == 403
+
+            updated = admin.post(
+                f"/admin/usuarios/{user_id}/formularios",
+                data={
+                    "forms": ["ocr", "google_1"],
+                    "csrf": csrf_from(admin.get("/")),
+                },
+            )
+            assert updated.status_code == 200
+            refreshed = capturista.get("/")
+            assert 'name="front"' in refreshed.text
+            assert "Datos de estructura" in refreshed.text
 
 
 def test_superadmin_cannot_disable_or_demote_self():

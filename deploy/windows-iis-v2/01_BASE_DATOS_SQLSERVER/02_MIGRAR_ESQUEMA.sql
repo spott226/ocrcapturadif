@@ -38,6 +38,8 @@ BEGIN TRY
             is_active bit NOT NULL
                 CONSTRAINT DF_app_users_is_active DEFAULT (1),
             created_by nvarchar(254) NOT NULL,
+            form_access nvarchar(255) NOT NULL
+                CONSTRAINT DF_app_users_form_access DEFAULT (N'ocr'),
             created_at datetimeoffset(6) NOT NULL
                 CONSTRAINT DF_app_users_created_at DEFAULT (SYSDATETIMEOFFSET()),
             last_login_at datetimeoffset(6) NULL,
@@ -46,6 +48,10 @@ BEGIN TRY
                 CHECK (role IN (N'superadmin', N'capturista'))
         );
     END;
+
+    IF COL_LENGTH(N'dbo.app_users', N'form_access') IS NULL
+        ALTER TABLE dbo.app_users ADD form_access nvarchar(255) NOT NULL
+            CONSTRAINT DF_app_users_form_access DEFAULT (N'ocr') WITH VALUES;
 
     IF COL_LENGTH(N'dbo.people', N'given_names') IS NULL
         ALTER TABLE dbo.people ADD given_names nvarchar(120) NOT NULL

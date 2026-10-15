@@ -3,8 +3,8 @@
 <section class="hero">
   <div>
     <p class="eyebrow">Captura Apoyos</p>
-    <h1>Escanee la INE con la cámara</h1>
-    <p>Abra la cámara desde el celular, tome la foto y revise los datos antes de guardarlos.</p>
+    <h1>Formularios asignados</h1>
+    <p>Seleccione el formulario que va a llenar. Cada cuenta muestra únicamente los accesos autorizados.</p>
   </div>
   {% if user.is_superadmin %}<a class="button secondary" href="/exportar.xlsx">Exportar Excel</a>{% endif %}
 </section>
@@ -12,7 +12,23 @@
 {% if request.query_params.get('guardado') %}<div class="success">Registro guardado correctamente.</div>{% endif %}
 {% if request.query_params.get('eliminado') and user.is_superadmin %}<div class="success">Registro eliminado.</div>{% endif %}
 
-<section class="card">
+<section class="form-catalog" aria-label="Formularios disponibles">
+  {% for form in available_forms %}
+  <article class="form-card">
+    <div>
+      <small>{{ 'Formulario externo' if form.external else 'Formulario interno' }}</small>
+      <h2>{{ form.name }}</h2>
+      <p>{{ form.description }}</p>
+    </div>
+    <a class="button" href="{{ form.url }}" {% if form.external %}target="_blank" rel="noopener noreferrer"{% endif %}>Abrir formulario</a>
+  </article>
+  {% else %}
+  <div class="alert">Su cuenta no tiene formularios asignados. Solicite acceso al superadministrador.</div>
+  {% endfor %}
+</section>
+
+{% if can_use_ocr %}
+<section class="card" id="captura-ine">
   <h2>Nueva captura</h2>
   <div class="notice"><strong>Use la cámara:</strong> permita el acceso cuando el navegador lo solicite. Las fotos se procesan en memoria y se eliminan al terminar.</div>
   {% if support_types %}
@@ -44,6 +60,7 @@
   <div class="alert">Aún no hay tipos de apoyo disponibles. Solicite al superadministrador que configure el catálogo.</div>
   {% endif %}
 </section>
+{% endif %}
 
 <dialog id="camera-dialog">
   <div class="camera-shell">

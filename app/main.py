@@ -31,6 +31,34 @@ ROLE_SUPERADMIN = "superadmin"
 ROLE_CAPTURISTA = "capturista"
 VALID_ROLES = {ROLE_SUPERADMIN, ROLE_CAPTURISTA}
 
+FORM_OCR = "ocr"
+FORM_GOOGLE_1 = "google_1"
+FORM_RED_1X10 = "red_1x10"
+FORM_DEFINITIONS = (
+    {
+        "code": FORM_OCR,
+        "name": "Captura de INE con OCR",
+        "description": "Fotografíe la INE, revise los datos detectados y guarde la captura.",
+        "url": "#captura-ine",
+        "external": False,
+    },
+    {
+        "code": FORM_GOOGLE_1,
+        "name": "Datos de estructura",
+        "description": "Información relevante sobre los integrantes del equipo. Google solicitará iniciar sesión para cargar archivos.",
+        "url": "https://docs.google.com/forms/d/e/1FAIpQLSf6kFqGT2GNUljAA50Iy6sRFqj3dxqNlUVW8wPxITvznZ4wFQ/viewform?usp=header",
+        "external": True,
+    },
+    {
+        "code": FORM_RED_1X10,
+        "name": "Red De Apoyo 1x10",
+        "description": "Formulario de registro de la red de apoyo.",
+        "url": "https://docs.google.com/forms/d/e/1FAIpQLSc5SYohuV3ieIwXCwquvlfuRKnG3d4m51xDoYnN1vFqc-somA/viewform?usp=header",
+        "external": True,
+    },
+)
+VALID_FORM_CODES = {item["code"] for item in FORM_DEFINITIONS}
+
 MUNICIPALITIES = (
     "Aguascalientes",
     "Asientos",
@@ -132,6 +160,13 @@ def migrate_early_v2_database() -> None:
                 add_keyword = "ADD" if engine.dialect.name == "mssql" else "ADD COLUMN"
                 connection.execute(text(
                     f"ALTER TABLE app_users {add_keyword} last_login_at {type_sql} NULL"
+                ))
+            if "form_access" not in columns:
+                type_sql = Unicode(255).compile(dialect=engine.dialect)
+                default_sql = "N'ocr'" if engine.dialect.name == "mssql" else "'ocr'"
+                connection.execute(text(
+                    f"ALTER TABLE app_users {add_keyword} form_access {type_sql} "
+                    f"NOT NULL DEFAULT {default_sql}"
                 ))
 
 
@@ -238,6 +273,30 @@ def require_superadmin(request: Request, db: Session) -> AppUser:
     user = require_user(request, db)
     if not user.is_superadmin:
         raise HTTPException(403, "Esta acción requiere el rol de superadministrador")
+    return user
+
+
+def normalized_form_codes(values: list[str] | tuple[str, ...] | None) -> list[str]:
+    requested = set(values or [])
+    return [item["code"] for item in FORM_DEFINITIONS if item["code"] in requested]
+
+
+def allowed_form_codes(user: AppUser) -> set[str]:
+    if user.is_superadmin:
+        return set(VALID_FORM_CODES)
+    # Existing capturistas created before this feature keep their OCR access.
+    return user.form_codes or {FORM_OCR}
+
+
+def forms_for_user(user: AppUser) -> list[dict]:
+    allowed = allowed_form_codes(user)
+    return [item for item in FORM_DEFINITIONS if item["code"] in allowed]
+
+
+def require_form_access(request: Request, db: Session, form_code: str) -> AppUser:
+    user = require_user(request, db)
+    if form_code not in allowed_form_codes(user):
+        raise HTTPException(403, "Su cuenta no tiene acceso a este formulario")
     return user
 
 
@@ -404,6 +463,8 @@ def change_password(
 def home(request: Request, pagina: int = Query(1, ge=1), db: Session = Depends(get_db)):
     user = require_user(request, db)
     supports = active_support_types(db)
+    available_forms = forms_for_user(user)
+    can_use_ocr = FORM_OCR in allowed_form_codes(user)
     if not user.is_superadmin:
         return page(
             request,
@@ -413,6 +474,8 @@ def home(request: Request, pagina: int = Query(1, ge=1), db: Session = Depends(g
             current_page=1,
             total_pages=1,
             support_types=supports,
+            available_forms=available_forms,
+            can_use_ocr=can_use_ocr,
         )
 
     page_size = 10
@@ -433,6 +496,8 @@ def home(request: Request, pagina: int = Query(1, ge=1), db: Session = Depends(g
         current_page=current_page,
         total_pages=total_pages,
         support_types=supports,
+        available_forms=available_forms,
+        can_use_ocr=can_use_ocr,
     )
 
 
@@ -455,7 +520,7 @@ async def ocr(
     csrf: str = Form(...),
     db: Session = Depends(get_db),
 ):
-    require_user(request, db)
+    require_form_access(request, db, FORM_OCR)
     require_csrf(request, csrf)
     merged = {
         "name": "",
@@ -555,7 +620,7 @@ def save(
     csrf: str = Form(...),
     db: Session = Depends(get_db),
 ):
-    user = require_user(request, db)
+    user = require_form_access(request, db, FORM_OCR)
     require_csrf(request, csrf)
 
     if not given_names.strip() and name.strip():
@@ -745,6 +810,7 @@ def users_page(request: Request, db: Session, *, error: str | None = None):
         "users.html",
         users=users,
         roles=(ROLE_SUPERADMIN, ROLE_CAPTURISTA),
+        forms=FORM_DEFINITIONS,
         active_admins=active_admins,
         error=error,
     )
@@ -762,6 +828,7 @@ def create_user(
     email: str = Form(...),
     password: str = Form(...),
     role: str = Form(...),
+    forms: list[str] | None = Form(None),
     csrf: str = Form(...),
     db: Session = Depends(get_db),
 ):
@@ -774,6 +841,11 @@ def create_user(
         return users_page(request, db, error="La contraseña debe tener entre 12 y 200 caracteres.")
     if role not in VALID_ROLES:
         raise HTTPException(400, "Rol no válido")
+    selected_forms = normalized_form_codes(forms)
+    if not selected_forms:
+        return users_page(request, db, error="Seleccione al menos un formulario para la cuenta.")
+    if set(forms or []) - VALID_FORM_CODES:
+        raise HTTPException(400, "Formulario no válido")
     if db.scalar(select(AppUser.id).where(func.lower(AppUser.email) == normalized_email)):
         return users_page(request, db, error="Ya existe una cuenta con ese correo.")
     db.add(AppUser(
@@ -781,6 +853,7 @@ def create_user(
         password_hash=password_hash.hash(password),
         role=role,
         active=True,
+        form_access=",".join(selected_forms),
         created_by=actor.email,
     ))
     try:
@@ -789,6 +862,29 @@ def create_user(
         db.rollback()
         return users_page(request, db, error="Ya existe una cuenta con ese correo.")
     return RedirectResponse("/admin/usuarios?creado=1", status_code=303)
+
+
+@app.post("/admin/usuarios/{user_id}/formularios", response_class=HTMLResponse)
+def change_user_forms(
+    user_id: int,
+    request: Request,
+    forms: list[str] | None = Form(None),
+    csrf: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    require_superadmin(request, db)
+    require_csrf(request, csrf)
+    target = db.get(AppUser, user_id)
+    if not target:
+        raise HTTPException(404, "Usuario no encontrado")
+    selected_forms = normalized_form_codes(forms)
+    if not selected_forms:
+        return users_page(request, db, error="Seleccione al menos un formulario para la cuenta.")
+    if set(forms or []) - VALID_FORM_CODES:
+        raise HTTPException(400, "Formulario no válido")
+    target.form_access = ",".join(selected_forms)
+    db.commit()
+    return RedirectResponse("/admin/usuarios?actualizado=1", status_code=303)
 
 
 def ensure_admin_change_is_safe(db: Session, actor: AppUser, target: AppUser, *, removes_admin: bool) -> None:

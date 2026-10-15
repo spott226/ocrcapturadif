@@ -13,6 +13,11 @@
     <label>Correo institucional<input type="email" name="email" maxlength="254" autocomplete="off" required></label>
     <label>Rol<select name="role" required><option value="capturista">Capturista</option><option value="superadmin">Superadministrador</option></select></label>
     <label class="wide">Contraseña inicial<input type="password" name="password" minlength="12" maxlength="200" autocomplete="new-password" required><small>Mínimo 12 caracteres. Entréguela por un medio seguro.</small></label>
+    <fieldset class="wide permission-picker">
+      <legend>Formularios permitidos</legend>
+      {% for form in forms %}<label class="check-label"><input type="checkbox" name="forms" value="{{ form.code }}" {% if form.code == 'ocr' %}checked{% endif %}> {{ form.name }}</label>{% endfor %}
+      <small>Debe seleccionar al menos uno. Los superadministradores siempre conservan acceso total.</small>
+    </fieldset>
     <div class="actions wide"><span></span><button>Crear usuario</button></div>
   </form>
 </section>
@@ -27,6 +32,15 @@
         <input type="hidden" name="csrf" value="{{ csrf }}">
         <label>Rol<select name="role"><option value="capturista" {% if account.role == 'capturista' %}selected{% endif %}>Capturista</option><option value="superadmin" {% if account.role == 'superadmin' %}selected{% endif %}>Superadministrador</option></select></label>
         <button class="button ghost">Cambiar rol</button>
+      </form>
+      <form method="post" action="/admin/usuarios/{{ account.id }}/formularios" class="permission-form">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <strong>Formularios permitidos</strong>
+        <div class="permission-options">
+          {% for form in forms %}<label class="check-label"><input type="checkbox" name="forms" value="{{ form.code }}" {% if form.code in account.form_codes or (not account.form_codes and form.code == 'ocr') %}checked{% endif %}> {{ form.name }}</label>{% endfor %}
+        </div>
+        {% if account.is_superadmin %}<small>El rol de superadministrador tiene acceso total aunque cambie esta selección.</small>{% endif %}
+        <button class="button ghost">Guardar formularios</button>
       </form>
       <form method="post" action="/admin/usuarios/{{ account.id }}/estado" class="inline-admin-form">
         <input type="hidden" name="csrf" value="{{ csrf }}">
