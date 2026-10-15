@@ -11,6 +11,13 @@ def main() -> int:
     if not root.is_dir():
         print("ERROR: CAPTURA_APOYOS_ROOT no apunta a la aplicación.", file=sys.stderr)
         return 2
+    # pydantic-settings resolves env_file=".env" from the current working
+    # directory. The updater itself is launched from the extracted package,
+    # so explicitly enter the deployed application directory before importing
+    # app.config. Otherwise validation silently connects to the default empty
+    # SQLite database beside this script instead of the preserved SQL Server
+    # configuration in <root>/.env.
+    os.chdir(root)
     sys.path.insert(0, str(root))
 
     for module_name in ("fastapi", "cv2", "onnxruntime", "rapidocr", "pyodbc"):
