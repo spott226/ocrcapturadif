@@ -67,6 +67,8 @@ def valid_record(csrf: str, support_type_id: int, **overrides):
         "municipality": "Aguascalientes",
         "support_type_id": str(support_type_id),
         "curp": "PULA900101MDFRPN09",
+        "cic": "1234567890",
+        "ocr_code": "1234567890123",
         "phone": "4491234567",
         "leader": "LIDER FICTICIO",
         "csrf": csrf,
@@ -149,20 +151,26 @@ def test_superadmin_can_save_export_and_delete_fictitious_record():
             assert person.maternal_surname == "PRUEBA"
             assert person.municipality == "Aguascalientes"
             assert person.support_type_id == support_id
+            assert person.cic == "1234567890"
+            assert person.ocr_code == "1234567890123"
             person_id = person.id
 
         exported = client.get("/exportar.xlsx")
         assert exported.status_code == 200
         workbook = load_workbook(BytesIO(exported.content), read_only=True)
         rows = list(workbook.active.iter_rows(values_only=True))
-        assert rows[0][:9] == (
+        assert rows[0][:10] == (
             "ID", "Nombre(s)", "Apellido paterno", "Apellido materno",
-            "Nombre completo", "CURP", "Municipio", "Código de apoyo", "Tipo de apoyo",
+            "CURP", "CIC", "OCR", "Municipio",
+            "Código de apoyo", "Tipo de apoyo",
         )
-        assert rows[1][1:9] == (
-            "PERSONA", "FICTICIA", "PRUEBA", "PERSONA FICTICIA PRUEBA",
-            "PULA900101MDFRPN09", "Aguascalientes", "DESPENSA", "Apoyo alimentario",
+        assert rows[1][1:10] == (
+            "PERSONA", "FICTICIA", "PRUEBA",
+            "PULA900101MDFRPN09", "1234567890", "1234567890123",
+            "Aguascalientes", "DESPENSA", "Apoyo alimentario",
         )
+        assert exported.headers["content-disposition"] == 'attachment; filename="registros_apoyos.xlsx"'
+        assert workbook.active.title == "Registros"
         workbook.close()
 
         deleted = client.post(
@@ -185,6 +193,69 @@ def test_rejects_invalid_phone_length():
         )
         assert response.status_code == 200
         assert "El teléfono debe tener 10 dígitos" in response.text
+
+
+def test_front_and_optional_back_are_merged_into_review(monkeypatch):
+    readings = {
+        "front": {
+            "name": "PRUEBA LOPEZ ANA",
+            "given_names": "ANA",
+            "paternal_surname": "PRUEBA",
+            "maternal_surname": "LOPEZ",
+            "address": "CALLE FICTICIA 10\nAGUASCALIENTES AGS",
+            "municipality": "AGUASCALIENTES",
+            "curp": "PULA900101MDFRPN09",
+        },
+        "back": {
+            "cic": "1382528441",
+            "ocr_code": "3904033366874",
+        },
+    }
+
+    def fake_extract(_data, side=None):
+        return readings[side], f"LECTURA FICTICIA {side}"
+
+    monkeypatch.setattr("app.main.extract_image", fake_extract)
+    with TestClient(app) as client:
+        login(client)
+        create_support(client)
+        home = client.get("/")
+        assert 'name="front"' in home.text
+        assert 'name="back"' in home.text
+
+        response = client.post(
+            "/ocr",
+            data={"csrf": csrf_from(home)},
+            files={
+                "front": ("frente-ficticio.jpg", b"frente", "image/jpeg"),
+                "back": ("reverso-ficticio.jpg", b"reverso", "image/jpeg"),
+            },
+        )
+
+        assert response.status_code == 200
+        assert 'name="cic" value="1382528441"' in response.text
+        assert 'name="ocr_code" value="3904033366874"' in response.text
+
+
+def test_reverse_codes_are_normalized_before_saving():
+    with TestClient(app) as client:
+        login(client)
+        support_id = create_support(client)
+        response = client.post(
+            "/registros",
+            data=valid_record(
+                csrf_from(client.get("/")),
+                support_id,
+                cic="123 456-7890",
+                ocr_code="1234 5678-90123",
+            ),
+        )
+
+        assert response.status_code == 200
+        with SessionLocal() as db:
+            person = db.scalar(select(Person).where(Person.curp == "PULA900101MDFRPN09"))
+            assert person.cic == "1234567890"
+            assert person.ocr_code == "1234567890123"
 
 
 def test_records_are_paginated_ten_per_page():

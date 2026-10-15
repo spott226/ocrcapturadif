@@ -144,7 +144,7 @@ async def lifespan(_app: FastAPI):
     yield
 
 
-app = FastAPI(title="DIF · Captura Apoyos", docs_url=None, redoc_url=None, lifespan=lifespan)
+app = FastAPI(title="Captura Apoyos", docs_url=None, redoc_url=None, lifespan=lifespan)
 app.add_middleware(
     SessionMiddleware,
     secret_key=settings.secret_key,
@@ -437,11 +437,14 @@ async def ocr(
         "address": "",
         "municipality": "",
         "curp": "",
+        "cic": "",
+        "ocr_code": "",
         "phone": "",
         "leader": "",
     }
+    back_requested = bool(back and back.filename)
     try:
-        uploads = [("front", front)] + ([("back", back)] if back and back.filename else [])
+        uploads = [("front", front)] + ([("back", back)] if back_requested else [])
         for side, upload in uploads:
             image_data = await read_upload(upload)
             fields, raw = extract_image(image_data, side=side)
@@ -492,6 +495,16 @@ async def ocr(
                 "sin reflejos y con la credencial completa dentro del cuadro."
             ),
         )
+    if back_requested and not (merged["cic"] and merged["ocr_code"]):
+        return review_page(
+            request,
+            db,
+            merged,
+            error=(
+                "No se pudieron leer completos el CIC y el OCR del reverso. "
+                "Puede corregirlos manualmente o volver a tomar la fotografía."
+            ),
+        )
     return review_page(request, db, merged)
 
 
@@ -504,6 +517,8 @@ def save(
     municipality: str = Form(""),
     support_type_id: str = Form(""),
     curp: str = Form(""),
+    cic: str = Form(""),
+    ocr_code: str = Form(""),
     phone: str = Form(""),
     leader: str = Form(""),
     # Previous clients may still submit these fields during a rolling update.
@@ -521,6 +536,8 @@ def save(
     paternal_surname = " ".join(paternal_surname.strip().upper().split())
     maternal_surname = " ".join(maternal_surname.strip().upper().split())
     curp = curp.strip().upper()
+    cic = re.sub(r"\D", "", cic)
+    ocr_code = re.sub(r"\D", "", ocr_code)
     leader = " ".join(leader.strip().upper().split())
     phone = re.sub(r"\D", "", phone)
 
@@ -543,6 +560,8 @@ def save(
         "municipality": selected_municipality or municipality,
         "support_type_id": support_type_id,
         "curp": curp,
+        "cic": cic,
+        "ocr_code": ocr_code,
         "phone": phone,
         "leader": leader,
         "name": name,
@@ -550,6 +569,10 @@ def save(
     }
     if not re.fullmatch(r"[A-Z]{4}\d{6}[HM][A-Z]{5}[A-Z0-9]\d", curp):
         return review_page(request, db, data, error="Capture una CURP válida de 18 caracteres.")
+    if cic and not re.fullmatch(r"\d{8,15}", cic):
+        return review_page(request, db, data, error="Revise el CIC del reverso; debe tener entre 8 y 15 dígitos.")
+    if ocr_code and not re.fullmatch(r"\d{12,14}", ocr_code):
+        return review_page(request, db, data, error="Revise el OCR del reverso; debe tener entre 12 y 14 dígitos.")
     if phone and len(phone) != 10:
         return review_page(request, db, data, error="El teléfono debe tener 10 dígitos.")
     if not given_names or not paternal_surname:
@@ -564,6 +587,10 @@ def save(
         conditions.append(Person.curp == curp)
     if phone:
         conditions.append(Person.phone == phone)
+    if cic:
+        conditions.append(Person.cic == cic)
+    if ocr_code:
+        conditions.append(Person.ocr_code == ocr_code)
     duplicates = list(db.scalars(select(Person).where(or_(*conditions))).unique().all()) if conditions else []
     if duplicates:
         visible_duplicates = duplicates if user.is_superadmin else []
@@ -589,6 +616,8 @@ def save(
         municipality=selected_municipality[:120],
         support_type_id=support.id,
         curp=curp[:18],
+        cic=cic[:20],
+        ocr_code=ocr_code[:20],
         phone=phone[:15],
         leader=leader[:180],
         created_by=user.email,
@@ -621,14 +650,15 @@ def export(request: Request, db: Session = Depends(get_db)):
     rows = db.scalars(select(Person).order_by(Person.created_at)).unique().all()
     wb = Workbook()
     ws = wb.active
-    ws.title = "Registros DIF"
+    ws.title = "Registros"
     ws.append([
         "ID",
         "Nombre(s)",
         "Apellido paterno",
         "Apellido materno",
-        "Nombre completo",
         "CURP",
+        "CIC",
+        "OCR",
         "Municipio",
         "Código de apoyo",
         "Tipo de apoyo",
@@ -643,9 +673,10 @@ def export(request: Request, db: Session = Depends(get_db)):
             row.given_names,
             row.paternal_surname,
             row.maternal_surname,
-            row.display_name,
             row.curp,
-            row.display_municipality,
+            row.cic,
+            row.ocr_code,
+            row.municipality,
             row.support_type.code if row.support_type else "",
             row.support_type.name if row.support_type else "",
             row.phone,
@@ -663,7 +694,7 @@ def export(request: Request, db: Session = Depends(get_db)):
     wb.save(stream)
     stream.seek(0)
     headers = {
-        "Content-Disposition": 'attachment; filename="registros_dif.xlsx"',
+        "Content-Disposition": 'attachment; filename="registros_apoyos.xlsx"',
         "Cache-Control": "no-store",
     }
     return StreamingResponse(

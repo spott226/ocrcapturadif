@@ -827,9 +827,11 @@ def prepare_ocr_images(image: Image.Image) -> tuple[Image.Image, Image.Image, Im
 
 def extract_image(data: bytes, side: str | None = None) -> tuple[dict[str, str], str]:
     with Image.open(BytesIO(data)) as image:
-        rapid_text = _safe_rapid_ocr(image) if side == "front" else ""
-        rapid_fields = sanitize_extracted(parse_ine_text(rapid_text)) if rapid_text else {}
-        if all(rapid_fields.get(key) for key in ("name", "curp", "address")):
+        rapid_text = _safe_rapid_ocr(ImageOps.exif_transpose(image))
+        rapid_fields = sanitize_extracted(
+            parse_back_mrz(rapid_text) if side == "back" else parse_ine_text(rapid_text)
+        ) if rapid_text else {}
+        if side != "back" and all(rapid_fields.get(key) for key in ("name", "curp", "address")):
             return rapid_fields, rapid_text
         clean, shadowless, threshold = prepare_ocr_images(image)
         passes = ((shadowless, "--oem 3 --psm 11"),) if side == "front" else (

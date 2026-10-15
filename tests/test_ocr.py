@@ -212,6 +212,34 @@ GOMEZ<VELAZQUEZ<<MARGARITA<<<<""")
     assert data["ocr_code"] == "3904033366874"
 
 
+def test_rapid_ocr_reads_fictitious_back_mrz(monkeypatch):
+    monkeypatch.setattr(
+        "app.ocr._safe_rapid_ocr",
+        lambda *_args: """IDMEXI38252844I<<39O4O33366874
+GOMEZ<VELAZQUEZ<<MARGARITA<<<<""",
+    )
+    monkeypatch.setattr(
+        "app.ocr.prepare_ocr_images",
+        lambda *_args: (
+            Image.new("L", (1600, 1000), "white"),
+            Image.new("L", (1600, 1000), "white"),
+            Image.new("L", (1600, 1000), "white"),
+        ),
+    )
+    monkeypatch.setattr("app.ocr._safe_ocr", lambda *_args, **_kwargs: "")
+    image = Image.new("RGB", (1600, 1000), "white")
+    stream = BytesIO()
+    image.save(stream, format="JPEG")
+
+    data, _raw = extract_image(stream.getvalue(), side="back")
+
+    assert data["cic"] == "1382528441"
+    assert data["ocr_code"] == "3904033366874"
+    assert data["paternal_surname"] == "GOMEZ"
+    assert data["maternal_surname"] == "VELAZQUEZ"
+    assert data["given_names"] == "MARGARITA"
+
+
 def test_shadow_correction_balances_uneven_illumination():
     image = Image.new("L", (1800, 1000), 220)
     drawing = ImageDraw.Draw(image)

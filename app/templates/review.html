@@ -16,6 +16,8 @@
     <label>Apellido paterno<input name="paternal_surname" value="{{ data.paternal_surname or '' }}" maxlength="80" required></label>
     <label>Apellido materno <small>(opcional)</small><input name="maternal_surname" value="{{ data.maternal_surname or '' }}" maxlength="80"></label>
     <label>CURP<input name="curp" value="{{ data.curp or '' }}" minlength="18" maxlength="18" pattern="[A-Za-z]{4}[0-9]{6}[HhMm][A-Za-z]{5}[A-Za-z0-9][0-9]" required></label>
+    <label>CIC del reverso <small>(opcional)</small><input name="cic" value="{{ data.cic or '' }}" minlength="8" maxlength="15" inputmode="numeric" pattern="[0-9]{8,15}"></label>
+    <label>OCR del reverso <small>(opcional)</small><input name="ocr_code" value="{{ data.ocr_code or '' }}" minlength="12" maxlength="14" inputmode="numeric" pattern="[0-9]{12,14}"></label>
     <label>Municipio
       <select name="municipality" required>
         <option value="">Seleccione…</option>
