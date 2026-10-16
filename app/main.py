@@ -238,7 +238,11 @@ app = FastAPI(
     title="Captura Apoyos",
     docs_url=None,
     redoc_url=None,
-    root_path=PUBLIC_PREFIX,
+    # IIS removes the application path before forwarding to HttpPlatformHandler.
+    # PUBLIC_PREFIX is therefore only for browser-facing links and redirects.
+    # Setting it as ASGI root_path makes Starlette strip the prefix a second time
+    # and causes mounted static files to return 404.
+    root_path="",
     lifespan=lifespan,
 )
 app.add_middleware(

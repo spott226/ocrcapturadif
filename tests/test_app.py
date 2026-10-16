@@ -173,6 +173,16 @@ def test_public_prefix_normalization_for_iis_subpath():
     assert normalize_public_prefix("/CapturaApoyosDIF/") == "/CapturaApoyosDIF"
 
 
+def test_static_files_are_served_from_the_internal_iis_application_root():
+    # IIS strips /CapturaApoyosDIF before forwarding the request. The external
+    # prefix belongs in generated links, not in the ASGI root_path.
+    assert app.root_path == ""
+    with TestClient(app) as client:
+        response = client.get("/static/style.css")
+        assert response.status_code == 200
+        assert response.headers["content-type"].startswith("text/css")
+
+
 def test_superadmin_can_save_export_and_delete_fictitious_record():
     with TestClient(app) as client:
         login(client)
