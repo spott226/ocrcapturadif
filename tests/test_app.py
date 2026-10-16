@@ -6,7 +6,8 @@ from types import SimpleNamespace
 import pytest
 from fastapi.testclient import TestClient
 from openpyxl import Workbook, load_workbook
-from sqlalchemy import inspect, select, text
+from sqlalchemy import inspect, select, text, true
+from sqlalchemy.dialects import mssql
 
 os.environ["DATABASE_URL"] = "sqlite:///./test.sqlite3"
 os.environ["SECRET_KEY"] = "test-secret-key-that-is-long-enough"
@@ -171,6 +172,13 @@ def test_public_prefix_normalization_for_iis_subpath():
     assert normalize_public_prefix("/") == ""
     assert normalize_public_prefix("CapturaApoyosDIF") == "/CapturaApoyosDIF"
     assert normalize_public_prefix("/CapturaApoyosDIF/") == "/CapturaApoyosDIF"
+
+
+def test_active_boolean_filter_compiles_for_sql_server():
+    statement = select(SupportType).where(SupportType.active == true())
+    sql = str(statement.compile(dialect=mssql.dialect()))
+    assert "is_active = 1" in sql
+    assert "is_active IS 1" not in sql
 
 
 def test_static_files_are_served_from_the_internal_iis_application_root():

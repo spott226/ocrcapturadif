@@ -11,7 +11,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Resp
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from openpyxl import Workbook
-from sqlalchemy import DateTime, Integer, Unicode, func, inspect, or_, select, text
+from sqlalchemy import DateTime, Integer, Unicode, func, inspect, or_, select, text, true
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from starlette.middleware.httpsredirect import HTTPSRedirectMiddleware
@@ -358,7 +358,7 @@ def require_csrf(request: Request, token: str) -> None:
 def active_support_types(db: Session) -> list[SupportType]:
     return list(db.scalars(
         select(SupportType)
-        .where(SupportType.active.is_(True))
+        .where(SupportType.active == true())
         .order_by(SupportType.sort_order, SupportType.name)
     ).all())
 
@@ -878,7 +878,7 @@ def save(
     support = db.scalar(
         select(SupportType).where(
             SupportType.id == selected_support_id,
-            SupportType.active.is_(True),
+            SupportType.active == true(),
         )
     )
 
@@ -1039,7 +1039,7 @@ def users_page(request: Request, db: Session, *, error: str | None = None):
     users = db.scalars(select(AppUser).order_by(AppUser.email)).all()
     active_admins = db.scalar(select(func.count(AppUser.id)).where(
         AppUser.role == ROLE_SUPERADMIN,
-        AppUser.active.is_(True),
+        AppUser.active == true(),
     )) or 0
     return page(
         request,
@@ -1129,7 +1129,7 @@ def ensure_admin_change_is_safe(db: Session, actor: AppUser, target: AppUser, *,
     if removes_admin and target.is_superadmin and target.active:
         active_admins = db.scalar(select(func.count(AppUser.id)).where(
             AppUser.role == ROLE_SUPERADMIN,
-            AppUser.active.is_(True),
+            AppUser.active == true(),
         )) or 0
         if active_admins <= 1:
             raise HTTPException(400, "Debe permanecer al menos un superadministrador activo")
