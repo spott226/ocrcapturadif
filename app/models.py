@@ -20,6 +20,15 @@ class SupportType(Base):
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
 
 
+class Leader(Base):
+    __tablename__ = "leaders"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(Unicode(180), unique=True, index=True)
+    created_by: Mapped[str] = mapped_column(Unicode(254))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+
 class AppUser(Base):
     __tablename__ = "app_users"
 

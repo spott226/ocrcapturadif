@@ -17,7 +17,7 @@
     <a href="{{ public_prefix }}/admin/formularios/datos-estructura">Datos de estructura</a>
     <a href="{{ public_prefix }}/admin/formularios/red-apoyo">Red de Apoyo 1x10</a>
     <span class="nav-heading">Administración</span>
-    <a href="{{ public_prefix }}/admin/tipos-apoyo">Tipos de apoyo</a><a href="{{ public_prefix }}/admin/usuarios">Usuarios</a>
+    <a href="{{ public_prefix }}/admin/tipos-apoyo">Tipos de apoyo</a><a href="{{ public_prefix }}/admin/liderazgos">Liderazgos</a><a href="{{ public_prefix }}/admin/usuarios">Usuarios</a>
     {% endif %}
   </nav>
   <div class="sidebar-account"><small>{{ user.email }} · {{ 'Superadministrador' if user.is_superadmin else 'Capturista' }}</small><a href="{{ public_prefix }}/cuenta/contrasena">Cambiar contraseña</a><form method="post" action="{{ public_prefix }}/logout"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="link">Cerrar sesión</button></form></div>
@@ -27,7 +27,7 @@
   <div class="mobile-nav-panel">
     <nav aria-label="Menú móvil">
       <a href="{{ public_prefix }}/">Formularios</a>{% if can_use_ocr %}<a href="{{ public_prefix }}/captura">Nueva captura</a>{% endif %}
-      {% if user.is_superadmin %}<a href="{{ public_prefix }}/beneficiarios">Beneficiarios</a><a href="{{ public_prefix }}/admin/formularios/datos-estructura">Datos de estructura</a><a href="{{ public_prefix }}/admin/formularios/red-apoyo">Red de Apoyo 1x10</a><a href="{{ public_prefix }}/admin/tipos-apoyo">Tipos de apoyo</a><a href="{{ public_prefix }}/admin/usuarios">Usuarios</a>{% endif %}
+      {% if user.is_superadmin %}<a href="{{ public_prefix }}/beneficiarios">Beneficiarios</a><a href="{{ public_prefix }}/admin/formularios/datos-estructura">Datos de estructura</a><a href="{{ public_prefix }}/admin/formularios/red-apoyo">Red de Apoyo 1x10</a><a href="{{ public_prefix }}/admin/tipos-apoyo">Tipos de apoyo</a><a href="{{ public_prefix }}/admin/liderazgos">Liderazgos</a><a href="{{ public_prefix }}/admin/usuarios">Usuarios</a>{% endif %}
     </nav>
     <div class="mobile-account"><small>{{ user.email }} · {{ 'Superadministrador' if user.is_superadmin else 'Capturista' }}</small><a href="{{ public_prefix }}/cuenta/contrasena">Cambiar contraseña</a><form method="post" action="{{ public_prefix }}/logout"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="link">Cerrar sesión</button></form></div>
   </div>

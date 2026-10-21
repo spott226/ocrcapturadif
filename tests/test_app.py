@@ -16,7 +16,7 @@ os.environ["ADMIN_PASSWORD"] = "a-secure-test-password"
 
 from app.database import Base, SessionLocal, build_database_url, engine
 from app.main import app, migrate_early_v2_database, normalize_public_prefix
-from app.models import AppUser, Person, StructureSubmission, SupportNetworkSubmission, SupportType
+from app.models import AppUser, Leader, Person, StructureSubmission, SupportNetworkSubmission, SupportType
 from tools.importar_excel import import_workbook
 
 
@@ -311,6 +311,57 @@ def test_leader_must_come_from_unique_catalog():
             assert db.scalar(select(Person.id)) is None
 
 
+def test_superadmin_can_add_use_and_delete_leader():
+    with TestClient(app) as client:
+        login(client)
+        support_id = create_support(client)
+        catalog = client.get("/admin/liderazgos")
+        assert catalog.status_code == 200
+        assert "Liderazgos" in catalog.text
+        assert "Nalleli Luévano" in catalog.text
+
+        created = client.post(
+            "/admin/liderazgos",
+            data={"name": "  Nueva   Líder  ", "csrf": csrf_from(catalog)},
+        )
+        assert created.status_code == 200
+        assert "Líder agregado al catálogo" in created.text
+
+        duplicate = client.post(
+            "/admin/liderazgos",
+            data={"name": "nueva lider", "csrf": csrf_from(created)},
+        )
+        assert duplicate.status_code == 200
+        assert "Ese líder ya existe en el catálogo" in duplicate.text
+
+        saved = client.post(
+            "/registros",
+            data=valid_record(
+                csrf_from(client.get("/captura")),
+                support_id,
+                leader="Nueva Líder",
+            ),
+        )
+        assert saved.status_code == 200
+        with SessionLocal() as db:
+            leader = db.scalar(select(Leader).where(Leader.name == "Nueva Líder"))
+            assert leader is not None
+            leader_id = leader.id
+            person = db.scalar(select(Person).where(Person.curp == "PULA900101MDFRPN09"))
+            assert person.leader == "Nueva Líder"
+
+        deleted = client.post(
+            f"/admin/liderazgos/{leader_id}/eliminar",
+            data={"csrf": csrf_from(client.get("/admin/liderazgos"))},
+        )
+        assert deleted.status_code == 200
+        assert "Líder eliminado del catálogo" in deleted.text
+        with SessionLocal() as db:
+            assert db.get(Leader, leader_id) is None
+            person = db.scalar(select(Person).where(Person.curp == "PULA900101MDFRPN09"))
+            assert person.leader == "Nueva Líder"
+
+
 def test_front_and_optional_back_are_merged_into_review(monkeypatch):
     readings = {
         "front": {
@@ -424,6 +475,7 @@ def test_capturista_can_capture_but_cannot_view_export_delete_or_administer():
             assert capturista.get("/exportar.xlsx").status_code == 403
             assert capturista.get("/admin/usuarios").status_code == 403
             assert capturista.get("/admin/tipos-apoyo").status_code == 403
+            assert capturista.get("/admin/liderazgos").status_code == 403
 
             saved = capturista.post(
                 "/registros",

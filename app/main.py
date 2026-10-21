@@ -19,7 +19,7 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from .config import get_settings
 from .database import Base, SessionLocal, engine, get_db
-from .models import AppUser, Person, StructureSubmission, SupportNetworkSubmission, SupportType
+from .models import AppUser, Leader, Person, StructureSubmission, SupportNetworkSubmission, SupportType
 from .ocr import extract_image
 from .security import csrf_token, password_hash, valid_csrf, verify_password
 
@@ -225,12 +225,26 @@ def bootstrap_first_superadmin() -> None:
             db.rollback()
 
 
+def bootstrap_leaders() -> None:
+    """Load the original catalog once; administrators manage it afterwards."""
+    with SessionLocal() as db:
+        if (db.scalar(select(func.count(Leader.id))) or 0) != 0:
+            return
+        db.add_all(Leader(name=name, created_by="bootstrap") for name in LEADERS)
+        try:
+            db.commit()
+        except IntegrityError:
+            # Another worker may have seeded the catalog at the same time.
+            db.rollback()
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     Base.metadata.create_all(engine)
     migrate_existing_database()
     migrate_early_v2_database()
     bootstrap_first_superadmin()
+    bootstrap_leaders()
     yield
 
 
@@ -384,10 +398,14 @@ def canonical_municipality(value: str) -> str:
     )
 
 
-def canonical_leader(value: str) -> str:
+def leader_names(db: Session) -> list[str]:
+    return list(db.scalars(select(Leader.name).order_by(Leader.name)).all())
+
+
+def canonical_leader(db: Session, value: str) -> str:
     normalized = normalize_for_match(value)
     return next(
-        (item for item in LEADERS if normalize_for_match(item) == normalized),
+        (item for item in leader_names(db) if normalize_for_match(item) == normalized),
         "",
     )
 
@@ -419,7 +437,7 @@ def review_page(
         error=error,
         duplicates=duplicates or [],
         municipalities=MUNICIPALITIES,
-        leaders=LEADERS,
+        leaders=leader_names(db),
         support_types=active_support_types(db),
     )
 
@@ -867,7 +885,7 @@ def save(
     curp = curp.strip().upper()
     cic = re.sub(r"\D", "", cic)
     ocr_code = re.sub(r"\D", "", ocr_code)
-    selected_leader = canonical_leader(leader)
+    selected_leader = canonical_leader(db, leader)
     phone = re.sub(r"\D", "", phone)
 
     selected_municipality = canonical_municipality(municipality)
@@ -1248,3 +1266,61 @@ def update_support_type(
     item.active = active == "1"
     db.commit()
     return RedirectResponse(public_url("/admin/tipos-apoyo?actualizado=1"), status_code=303)
+
+
+def leaders_page(request: Request, db: Session, *, error: str | None = None):
+    items = db.scalars(select(Leader).order_by(Leader.name)).all()
+    return page(request, "leaders.html", leaders=items, error=error)
+
+
+@app.get("/admin/liderazgos", response_class=HTMLResponse)
+def manage_leaders(request: Request, db: Session = Depends(get_db)):
+    require_superadmin(request, db)
+    return leaders_page(request, db)
+
+
+@app.post("/admin/liderazgos", response_class=HTMLResponse)
+def create_leader(
+    request: Request,
+    name: str = Form(...),
+    csrf: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    user = require_superadmin(request, db)
+    require_csrf(request, csrf)
+    display_name = " ".join(name.strip().split())[:180]
+    if not display_name:
+        return leaders_page(request, db, error="Capture el nombre del líder.")
+    normalized = normalize_for_match(display_name)
+    if any(normalize_for_match(item) == normalized for item in leader_names(db)):
+        return leaders_page(request, db, error="Ese líder ya existe en el catálogo.")
+    db.add(Leader(name=display_name, created_by=user.email))
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        return leaders_page(request, db, error="Ese líder ya existe en el catálogo.")
+    return RedirectResponse(public_url("/admin/liderazgos?creado=1"), status_code=303)
+
+
+@app.post("/admin/liderazgos/{leader_id}/eliminar", response_class=HTMLResponse)
+def delete_leader(
+    leader_id: int,
+    request: Request,
+    csrf: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    require_superadmin(request, db)
+    require_csrf(request, csrf)
+    item = db.get(Leader, leader_id)
+    if not item:
+        raise HTTPException(404, "Líder no encontrado")
+    if (db.scalar(select(func.count(Leader.id))) or 0) <= 1:
+        return leaders_page(
+            request,
+            db,
+            error="Debe permanecer al menos un líder disponible en el catálogo.",
+        )
+    db.delete(item)
+    db.commit()
+    return RedirectResponse(public_url("/admin/liderazgos?eliminado=1"), status_code=303)
