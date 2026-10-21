@@ -104,7 +104,6 @@ def import_workbook(path: Path, simulate: bool = False) -> tuple[int, int, int]:
 
     inserted = duplicates = invalid = 0
     seen_curps: set[str] = set()
-    seen_phones: set[str] = set()
     with SessionLocal() as db:
         support_items = list(db.scalars(select(SupportType)).all())
         supports_by_code = {
@@ -152,15 +151,13 @@ def import_workbook(path: Path, simulate: bool = False) -> tuple[int, int, int]:
                 invalid += 1
                 continue
 
-            if (curp and curp in seen_curps) or (phone and phone in seen_phones):
+            if curp and curp in seen_curps:
                 duplicates += 1
                 continue
 
             conditions = []
             if curp:
                 conditions.append(Person.curp == curp)
-            if phone:
-                conditions.append(Person.phone == phone)
             if conditions and db.scalar(select(Person.id).where(or_(*conditions)).limit(1)):
                 duplicates += 1
                 continue
@@ -182,8 +179,6 @@ def import_workbook(path: Path, simulate: bool = False) -> tuple[int, int, int]:
                 ))
             if curp:
                 seen_curps.add(curp)
-            if phone:
-                seen_phones.add(phone)
             inserted += 1
 
         if not simulate:

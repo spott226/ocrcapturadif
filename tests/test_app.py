@@ -260,6 +260,37 @@ def test_rejects_invalid_phone_length():
         assert "El teléfono debe tener 10 dígitos" in response.text
 
 
+def test_allows_two_people_with_the_same_phone_number():
+    with TestClient(app) as client:
+        login(client)
+        support_id = create_support(client)
+        first = client.post(
+            "/registros",
+            data=valid_record(csrf_from(client.get("/captura")), support_id),
+        )
+        second = client.post(
+            "/registros",
+            data=valid_record(
+                csrf_from(client.get("/captura")),
+                support_id,
+                given_names="OTRA",
+                paternal_surname="PERSONA",
+                maternal_surname="FICTICIA",
+                curp="ROGA910202HASDNL08",
+                cic="2234567890",
+                ocr_code="2234567890123",
+                phone="4491234567",
+            ),
+        )
+
+        assert first.status_code == 200
+        assert second.status_code == 200
+        assert "Posible duplicado" not in second.text
+        with SessionLocal() as db:
+            rows = list(db.scalars(select(Person).where(Person.phone == "4491234567")).all())
+            assert len(rows) == 2
+
+
 def test_leader_must_come_from_unique_catalog():
     with TestClient(app) as client:
         login(client)
@@ -596,19 +627,24 @@ def test_excel_import_supports_legacy_and_v2_without_writing_in_simulation(tmp_p
             "Aguascalientes", "DESPENSA", "4492222222",
         ])
         sheet.append([
+            "TELÉFONO", "COMPARTIDO", "FICTICIO", "TELE900101MDFRPN09",
+            "Aguascalientes", "DESPENSA", "4491111111",
+        ])
+        sheet.append([
             "TIPO", "DESCONOCIDO", "FICTICIO", "TIPO900101MDFRPN09",
             "Aguascalientes", "NO-EXISTE", "4493333333",
         ])
         modern_path = tmp_path / "v2.xlsx"
         modern.save(modern_path)
-        assert import_workbook(modern_path) == (1, 0, 1)
+        assert import_workbook(modern_path) == (2, 0, 1)
 
         with SessionLocal() as db:
             rows = list(db.scalars(select(Person).order_by(Person.id)).all())
-            assert len(rows) == 2
+            assert len(rows) == 3
             assert rows[0].name == "PERSONA LEGADA FICTICIA"
             assert rows[0].address == "DOMICILIO FICTICIO"
             assert rows[0].support_type_id is None
             assert rows[1].name == "OTRA PERSONA FICTICIA"
             assert rows[1].address == ""
             assert rows[1].support_type.code == "DESPENSA"
+            assert rows[2].phone == rows[0].phone == "4491111111"

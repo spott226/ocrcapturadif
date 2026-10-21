@@ -916,8 +916,6 @@ def save(
     conditions = []
     if curp:
         conditions.append(Person.curp == curp)
-    if phone:
-        conditions.append(Person.phone == phone)
     if cic:
         conditions.append(Person.cic == cic)
     if ocr_code:
